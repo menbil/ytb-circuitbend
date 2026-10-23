@@ -49,7 +49,7 @@ app.post('/api/convert-mp4', async (req: Request, res: Response) => {
   }
 
   const tempId = `cb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const inputPath = path.join(os.tmpdir(), `${tempId}.webm`);
+  const inputPath = path.join(os.tmpdir(), `${tempId}.bin`);
   const outputPath = path.join(os.tmpdir(), `${tempId}.mp4`);
 
   try {
@@ -57,21 +57,25 @@ app.post('/api/convert-mp4', async (req: Request, res: Response) => {
 
     console.log(`[MP4 Export] Starting FFmpeg conversion for ${req.body.length} bytes...`);
 
-    // High-Fidelity H.264 Main Profile + YUV420p + Studio 320k AAC + FastStart
-    // CRF 17 preserves crisp CRT scanlines, RGB aberration & micro-glitches without blocking artifacts
+    // High-Fidelity H.264 Main Profile + YUV420p + Studio 320k AAC + FastStart + Exact Duration CFR
+    // Enforces monotonic 60fps CFR and accurate header duration for social networks and mobile OS
     const ffmpegArgs = [
       '-y',
       '-err_detect', 'ignore_err',
       '-fflags', '+genpts+discardcorrupt',
+      '-avoid_negative_ts', 'make_zero',
       '-i', inputPath,
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
       '-preset', 'medium',
       '-crf', '17',
+      '-r', '60',
+      '-fps_mode', 'cfr',
       '-maxrate', '18M',
       '-bufsize', '36M',
       '-c:a', 'aac',
       '-b:a', '320k',
+      '-af', 'aresample=async=1000:first_pts=0',
       '-movflags', '+faststart',
       outputPath
     ];

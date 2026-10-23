@@ -554,23 +554,7 @@ export const App: React.FC = () => {
         recorder.onstop = async () => {
           const rawBlob = new Blob(recordedChunksRef.current, { type: mimeType });
 
-          // If browser natively captured MP4, download directly as .mp4
-          if (mimeType.includes('mp4')) {
-            const url = URL.createObjectURL(rawBlob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `circuitbend-social-export-${Date.now()}.mp4`;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            }, 200);
-            return;
-          }
-
-          // Otherwise (recorded as WebM), convert via server FFmpeg for 100% social network compatibility
+          // Send to server FFmpeg to enforce exact header duration, constant 60fps & mobile audio sync
           setIsConverting(true);
           try {
             const res = await fetch('/api/convert-mp4', {
@@ -602,7 +586,7 @@ export const App: React.FC = () => {
           }
           setIsConverting(false);
 
-          // Fallback download with .mp4 extension
+          // Fallback download if server conversion is unavailable
           const fallbackUrl = URL.createObjectURL(rawBlob);
           const a = document.createElement('a');
           a.style.display = 'none';

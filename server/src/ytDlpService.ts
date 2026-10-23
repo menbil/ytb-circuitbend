@@ -168,21 +168,17 @@ export class YtDlpService {
       ? idOrUrl 
       : `https://www.youtube.com/watch?v=${idOrUrl}`;
 
-    // Progressive muxed stream optimized with high-res buffer & chunked download to avoid YouTube throttling
+    // Real-time progressive stream without chunk delays to prevent playback stalls
     const baseArgs = [
       '-f',
-      'b[height<=1080][ext=mp4]/b[height<=720][ext=mp4]/18/best[height<=720]/best',
+      '18/b[height<=720]/best[height<=720]/best',
       '--no-playlist',
       '--no-warnings',
       '--no-part',
       '--js-runtimes',
       'node',
       '--extractor-args',
-      'youtube:player_client=android,web',
-      '--buffer-size',
-      '4M',
-      '--http-chunk-size',
-      '10M',
+      'youtube:player_client=android',
       '--retries',
       '10',
       '--fragment-retries',
