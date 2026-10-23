@@ -59,6 +59,9 @@ export const App: React.FC = () => {
     playToggle?: () => void;
     tapeFreeze?: () => void;
     randomize?: () => void;
+    resetClean?: () => void;
+    snapshot?: () => void;
+    recordToggle?: () => void;
     nextTrack?: () => void;
     prevTrack?: () => void;
     applyPreset?: (p: Preset) => void;
@@ -284,12 +287,15 @@ export const App: React.FC = () => {
         if (target === 'action.playToggle' && h.playToggle) h.playToggle();
         else if (target === 'action.tapeFreeze' && h.tapeFreeze) h.tapeFreeze();
         else if (target === 'action.randomize' && h.randomize) h.randomize();
-        else if (target === 'action.nextTrack' && h.nextTrack) h.nextTrack();
-        else if (target === 'action.prevTrack' && h.prevTrack) h.prevTrack();
+        else if (target === 'action.resetClean' && h.resetClean) h.resetClean();
+        else if (target === 'action.snapshot' && h.snapshot) h.snapshot();
+        else if (target === 'action.recordToggle' && h.recordToggle) h.recordToggle();
         else if (target === 'action.preset0' && h.applyPreset) h.applyPreset(PRESETS[0]);
         else if (target === 'action.preset1' && h.applyPreset) h.applyPreset(PRESETS[1]);
         else if (target === 'action.preset2' && h.applyPreset) h.applyPreset(PRESETS[2]);
         else if (target === 'action.preset3' && h.applyPreset) h.applyPreset(PRESETS[3]);
+        else if (target === 'action.nextTrack' && h.nextTrack) h.nextTrack();
+        else if (target === 'action.prevTrack' && h.prevTrack) h.prevTrack();
       }
     });
   }, []);
@@ -768,6 +774,9 @@ export const App: React.FC = () => {
     playToggle: handlePlayToggle,
     tapeFreeze: handleToggleTapeFreeze,
     randomize: handleRandomize,
+    resetClean: () => handleApplyPreset(PRESETS[0]),
+    snapshot: handleTakeSnapshot,
+    recordToggle: handleToggleRecord,
     nextTrack: handleNextTrack,
     prevTrack: handlePrevTrack,
     applyPreset: handleApplyPreset

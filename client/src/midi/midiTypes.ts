@@ -33,12 +33,15 @@ export type MidiTarget =
   | 'action.playToggle'
   | 'action.tapeFreeze'
   | 'action.randomize'
-  | 'action.nextTrack'
-  | 'action.prevTrack'
+  | 'action.resetClean'
+  | 'action.snapshot'
+  | 'action.recordToggle'
   | 'action.preset0'
   | 'action.preset1'
   | 'action.preset2'
-  | 'action.preset3';
+  | 'action.preset3'
+  | 'action.nextTrack'
+  | 'action.prevTrack';
 
 export interface MidiTargetMetadata {
   id: MidiTarget;
@@ -80,15 +83,18 @@ export const MIDI_TARGET_CATALOG: MidiTargetMetadata[] = [
   { id: 'audio.masterVolume', label: 'Master Output Volume', category: 'audio', min: 0, max: 1 },
 
   // Actions
-  { id: 'action.playToggle', label: 'Play / Pause Stream', category: 'action' },
-  { id: 'action.tapeFreeze', label: 'TAPE STOP // FREEZE Brake', category: 'action' },
-  { id: 'action.randomize', label: 'Randomize Parameters (Macro)', category: 'action' },
-  { id: 'action.nextTrack', label: 'Next Playlist Video', category: 'action' },
-  { id: 'action.prevTrack', label: 'Previous Playlist Video', category: 'action' },
-  { id: 'action.preset0', label: 'Preset: Direct Bypass', category: 'action' },
+  { id: 'action.playToggle', label: 'Play / Pause Stream (Space)', category: 'action' },
+  { id: 'action.tapeFreeze', label: 'TAPE STOP // FREEZE Brake (Key T/F)', category: 'action' },
+  { id: 'action.randomize', label: 'Randomize Parameters / Glitch Chaos (Key R)', category: 'action' },
+  { id: 'action.resetClean', label: 'RESET CLEAN // Bypass All FX (Panic Dry)', category: 'action' },
+  { id: 'action.snapshot', label: 'Capture Photo Instantanée CRT (Key S)', category: 'action' },
+  { id: 'action.recordToggle', label: 'Enregistrement Vidéo Session (Record WebM)', category: 'action' },
+  { id: 'action.preset0', label: 'Preset: Direct Bypass (Clean)', category: 'action' },
   { id: 'action.preset1', label: 'Preset: 1984 Abandoned Mall', category: 'action' },
   { id: 'action.preset2', label: 'Preset: Broken VHS VCR', category: 'action' },
-  { id: 'action.preset3', label: 'Preset: Cyberpunk CRT Arcade', category: 'action' }
+  { id: 'action.preset3', label: 'Preset: Cyberpunk CRT Arcade', category: 'action' },
+  { id: 'action.nextTrack', label: 'Next Playlist Video (Optional)', category: 'action' },
+  { id: 'action.prevTrack', label: 'Previous Playlist Video (Optional)', category: 'action' }
 ];
 
 export interface MidiActivityEvent {

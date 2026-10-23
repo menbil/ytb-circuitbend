@@ -28,7 +28,11 @@ describe('Web MIDI Engine & Novation Launch Control Mapping', () => {
     assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[9], 'action.playToggle');
     assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[10], 'action.tapeFreeze');
     assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[11], 'action.randomize');
-    assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[12], 'action.nextTrack');
+    assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[12], 'action.resetClean');
+    assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[25], 'action.snapshot');
+    assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[26], 'action.recordToggle');
+    assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[27], 'action.preset1');
+    assert.strictEqual(LAUNCH_CONTROL_PROFILE.noteMap[28], 'action.preset2');
   });
 
   it('Launch Control XL profile maps 24 knobs and 8 faders', () => {
