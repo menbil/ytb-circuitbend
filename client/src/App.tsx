@@ -508,7 +508,8 @@ export const App: React.FC = () => {
         return;
       }
       try {
-        const videoStream = canvasRef.current.captureStream(60);
+        // Natural paint-driven frame capture without timer collision / GPU locks
+        const videoStream = canvasRef.current.captureStream();
         const audioDest = audioEngineRef.current ? audioEngineRef.current.getMediaStreamDestination() : null;
         const tracks = [
           ...videoStream.getVideoTracks(),
@@ -537,10 +538,11 @@ export const App: React.FC = () => {
           }
         }
 
+        // 8 Mbps broadcast profile ensures butter-smooth hardware encoding without dropping frames
         const recorder = new MediaRecorder(combinedStream, {
           mimeType,
-          videoBitsPerSecond: 16_000_000,
-          audioBitsPerSecond: 320_000
+          videoBitsPerSecond: 8_000_000,
+          audioBitsPerSecond: 256_000
         });
         recordedChunksRef.current = [];
 
@@ -600,7 +602,8 @@ export const App: React.FC = () => {
           triggerDownload(rawBlob);
         };
 
-        recorder.start(500);
+        // Continuous native encoding without periodic timeslice interruptions
+        recorder.start();
         mediaRecorderRef.current = recorder;
         setIsRecording(true);
         setRecordingDuration(0);

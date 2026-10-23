@@ -80,13 +80,9 @@ const CircuitScreen: React.FC<{
       shaderMaterial.needsUpdate = true;
     }
 
-    // Freeze: only update texture frames when video is actually playing a new frame
-    if (texture) {
-      if (isFreezeActive) {
-        // Keep current frame frozen in VRAM
-      } else if (videoElement && videoElement.readyState >= 2 && !videoElement.paused) {
-        texture.needsUpdate = true;
-      }
+    // Freeze: only update texture frames when freeze is NOT active
+    if (!isFreezeActive && texture) {
+      texture.needsUpdate = true;
     }
 
     u.uTime.value = state.clock.getElapsedTime();
