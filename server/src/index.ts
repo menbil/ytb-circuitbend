@@ -7,8 +7,16 @@ import { YtDlpService } from './ytDlpService.js';
 
 dotenv.config();
 
-const clientDistPath = path.resolve(process.cwd(), 'client/dist');
-const hasClientDist = fs.existsSync(clientDistPath) && fs.existsSync(path.join(clientDistPath, 'index.html'));
+const candidatePaths = [
+  path.resolve(process.cwd(), '../client/dist'),
+  path.resolve(process.cwd(), 'client/dist'),
+  path.resolve(__dirname, '../../client/dist'),
+  path.resolve(__dirname, '../client/dist'),
+  path.resolve('/opt/render/project/src/client/dist')
+];
+const clientDistPath = candidatePaths.find((p) => fs.existsSync(path.join(p, 'index.html'))) || candidatePaths[0];
+const hasClientDist = fs.existsSync(path.join(clientDistPath, 'index.html'));
+console.log(`[Static Check] clientDistPath resolved to: ${clientDistPath} (exists: ${hasClientDist})`);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
