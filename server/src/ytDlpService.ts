@@ -5,26 +5,50 @@ import { PlaylistItem, PlaylistResponse } from './types.js';
 const execAsync = promisify(exec);
 
 export class YtDlpService {
-  private pythonCmd: string = 'python';
-  private usePythonModule: boolean = true;
+  private binaryCmd: string = 'yt-dlp';
+  private isDirectBinary: boolean = true;
 
   constructor() {
     this.detectExecutable();
   }
 
-  private async detectExecutable() {
+  public async detectExecutable() {
+    // 1. Direct yt-dlp binary (standard in Linux / Render PATH)
     try {
-      await execAsync('python --version');
-      this.pythonCmd = 'python';
-      this.usePythonModule = true;
-    } catch {
-      this.pythonCmd = 'py';
-      this.usePythonModule = true;
-    }
+      await execAsync('yt-dlp --version');
+      this.binaryCmd = 'yt-dlp';
+      this.isDirectBinary = true;
+      console.log('[yt-dlp] Using direct binary: yt-dlp');
+      return;
+    } catch {}
+
+    // 2. Python 3 module (Linux / Ubuntu standard)
+    try {
+      await execAsync('python3 -m yt_dlp --version');
+      this.binaryCmd = 'python3';
+      this.isDirectBinary = false;
+      console.log('[yt-dlp] Using: python3 -m yt_dlp');
+      return;
+    } catch {}
+
+    // 3. Python standard
+    try {
+      await execAsync('python -m yt_dlp --version');
+      this.binaryCmd = 'python';
+      this.isDirectBinary = false;
+      console.log('[yt-dlp] Using: python -m yt_dlp');
+      return;
+    } catch {}
+
+    // 4. Windows py launcher
+    this.binaryCmd = 'py';
+    this.isDirectBinary = false;
+    console.log('[yt-dlp] Fallback to: py -m yt_dlp');
   }
 
   public async getExecutable(): Promise<string> {
-    return `${this.pythonCmd} -m yt_dlp`;
+    await this.detectExecutable();
+    return this.isDirectBinary ? this.binaryCmd : `${this.binaryCmd} -m yt_dlp`;
   }
 
   /**
@@ -34,20 +58,21 @@ export class YtDlpService {
     await this.detectExecutable();
 
     return new Promise((resolve, reject) => {
-      // Direct python execution without cmd.exe shell interference
-      const args = [
-        '-m',
-        'yt_dlp',
+      const baseArgs = [
         '--flat-playlist',
         '-J',
         '--no-warnings',
         '--no-check-certificates',
+        '--extractor-args',
+        'youtube:player_client=android,web',
         url
       ];
 
-      console.log(`[yt-dlp] Fetching metadata for ${url}...`);
+      const args = this.isDirectBinary ? baseArgs : ['-m', 'yt_dlp', ...baseArgs];
 
-      const child = spawn(this.pythonCmd, args, { shell: false });
+      console.log(`[yt-dlp] Fetching metadata for ${url} via ${this.binaryCmd}...`);
+
+      const child = spawn(this.binaryCmd, args, { shell: false });
       let stdout = '';
       let stderr = '';
 
@@ -142,21 +167,25 @@ export class YtDlpService {
       : `https://www.youtube.com/watch?v=${idOrUrl}`;
 
     // Format: VP9 / AV1 / WebM video combined with Opus audio in true WebM container
-    const args = [
-      '-m',
-      'yt_dlp',
+    // extractor-args android,web bypasses cloud IP bot-detection block on Render / AWS
+    const baseArgs = [
       '-f',
       'bv*[vcodec^=vp9][height<=720]+ba[acodec=opus]/bv*[vcodec^=vp9]+ba[acodec=opus]/bv*[vcodec^=av01]+ba[acodec=opus]/bv*[ext=webm]+ba[ext=webm]/bv*[height<=720]+ba/best',
       '--no-playlist',
       '--no-warnings',
       '--no-part',
+      '--extractor-args',
+      'youtube:player_client=android,web',
+      '--buffer-size',
+      '16K',
       '-o',
       '-',
       targetUrl
     ];
 
-    console.log(`[yt-dlp] Spawning stream for ${targetUrl} (shell=false)`);
-    // CRITICAL: shell: false avoids Windows cmd.exe treating <= as file redirections
-    return spawn(this.pythonCmd, args, { shell: false });
+    const args = this.isDirectBinary ? baseArgs : ['-m', 'yt_dlp', ...baseArgs];
+
+    console.log(`[yt-dlp] Spawning stream for ${targetUrl} via ${this.binaryCmd} (shell=false)`);
+    return spawn(this.binaryCmd, args, { shell: false });
   }
 }
