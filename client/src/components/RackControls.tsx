@@ -67,6 +67,7 @@ interface RackControlsProps {
   onApplyPreset: (preset: Preset) => void;
   onRandomize: () => void;
   onTapeStop?: () => void;
+  onOpenMidiModal?: () => void;
 }
 
 export const RackControls: React.FC<RackControlsProps> = ({
@@ -99,7 +100,8 @@ export const RackControls: React.FC<RackControlsProps> = ({
   onUpdateAudio,
   onApplyPreset,
   onRandomize,
-  onTapeStop
+  onTapeStop,
+  onOpenMidiModal
 }) => {
   const isStoppedAndFrozen = isTapeFreeze ?? (isTapeStopped || isFreezeActive);
   const handleTapeFreezeAction = onToggleTapeFreeze || onTapeStop || onToggleFreeze;
@@ -301,13 +303,20 @@ export const RackControls: React.FC<RackControlsProps> = ({
             </button>
           )}
 
-          {/* MIDI Controller Badge */}
-          {midiConnected && (
-            <div className="px-2 py-0.5 rounded font-mono text-[9px] font-bold flex items-center gap-1 bg-amber-950/60 text-amber-300 border border-amber-600/60" title="Contrôleur Web MIDI connecté">
-              <Radio size={9} className="text-amber-400 animate-pulse" />
-              <span>MIDI</span>
-            </div>
-          )}
+          {/* MIDI Controller Badge & Settings Trigger */}
+          <button
+            onClick={onOpenMidiModal}
+            className={`px-2 py-0.5 rounded font-mono text-[9px] font-bold flex items-center gap-1.5 transition-all border ${
+              midiConnected
+                ? 'bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border-emerald-600/80 shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                : 'bg-neutral-900/90 hover:bg-neutral-800 text-neutral-400 border-neutral-700'
+            }`}
+            title="Ouvrir le configurateur MIDI (Novation Launch Control, Learn & Diagnostic)"
+          >
+            <Radio size={9} className={midiConnected ? 'text-emerald-400 animate-pulse' : 'text-neutral-500'} />
+            <span>MIDI</span>
+            {midiConnected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+          </button>
 
           {/* RANDOM Button */}
           <button

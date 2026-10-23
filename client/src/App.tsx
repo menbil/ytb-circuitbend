@@ -13,6 +13,9 @@ import {
 } from './types/index.js';
 import { PRESETS } from './presets.js';
 import { AudioCircuitEngine } from './audio/AudioCircuitEngine.js';
+import { MidiEngine } from './midi/MidiEngine.js';
+import { MidiModal } from './components/MidiModal.js';
+import { MidiTarget } from './midi/midiTypes.js';
 import { Header } from './components/Header.js';
 import { VideoViewport } from './components/VideoViewport.js';
 import { PlaylistPanel } from './components/PlaylistPanel.js';
@@ -50,6 +53,16 @@ export const App: React.FC = () => {
 
   const [midiConnected, setMidiConnected] = useState<boolean>(false);
   const [midiDeviceName, setMidiDeviceName] = useState<string | null>(null);
+  const midiEngineRef = useRef<MidiEngine | null>(null);
+  const [isMidiModalOpen, setIsMidiModalOpen] = useState<boolean>(false);
+  const actionHandlersRef = useRef<{
+    playToggle?: () => void;
+    tapeFreeze?: () => void;
+    randomize?: () => void;
+    nextTrack?: () => void;
+    prevTrack?: () => void;
+    applyPreset?: (p: Preset) => void;
+  }>({});
 
   // Preset & Parameter States (Start transparently on Direct Bypass)
   const defaultPreset = PRESETS.find((p) => p.id === 'clean') || PRESETS[0];
@@ -229,39 +242,55 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(animId);
   }, [lfoConfig]);
 
-  // Initialize Web MIDI API
+  // Initialize Web MIDI Engine (Novation Launch Control, XL, Generic & MIDI Learn)
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator) {
-      (navigator as any).requestMIDIAccess().then((access: any) => {
-        const updateInputs = () => {
-          let found = false;
-          for (const input of access.inputs.values()) {
-            found = true;
-            setMidiConnected(true);
-            setMidiDeviceName(input.name || 'MIDI Controller');
+    const engine = new MidiEngine();
+    midiEngineRef.current = engine;
 
-            input.onmidimessage = (msg: any) => {
-              const [status, data1, data2] = msg.data;
-              if ((status & 0xf0) === 0xb0) { // Control Change
-                const cc = data1;
-                const val = data2 / 127;
-                if (cc === 1) setVideoParams(prev => ({ ...prev, glitchIntensity: val }));
-                else if (cc === 2) setVideoParams(prev => ({ ...prev, rgbShift: val }));
-                else if (cc === 3) setVideoParams(prev => ({ ...prev, scanlines: val }));
-                else if (cc === 4) setVideoParams(prev => ({ ...prev, meshDisplacement: val }));
-                else if (cc === 5) setAudioParams(prev => ({ ...prev, drive: val }));
-                else if (cc === 6) setAudioParams(prev => ({ ...prev, tapeSpeed: 0.5 + val * 0.6 }));
-                else if (cc === 7) setAudioParams(prev => ({ ...prev, reverbWet: val }));
-                else if (cc === 8) setAudioParams(prev => ({ ...prev, filterCutoff: 100 + val * 12000 }));
-              }
-            };
-          }
-          if (!found) setMidiConnected(false);
-        };
-        updateInputs();
-        access.onstatechange = () => updateInputs();
-      }).catch(() => {});
-    }
+    engine.onStateChange((connected, name) => {
+      setMidiConnected(connected);
+      setMidiDeviceName(name);
+    });
+
+    engine.init((target: MidiTarget, normalized: number, isTrigger: boolean) => {
+      // 1. Video parameters
+      if (target.startsWith('video.')) {
+        const key = target.replace('video.', '') as keyof VideoBendingParams;
+        setActivePresetId('custom');
+        setVideoParams(prev => ({ ...prev, [key]: normalized }));
+      }
+      // 2. Audio parameters
+      else if (target.startsWith('audio.')) {
+        const key = target.replace('audio.', '');
+        setActivePresetId('custom');
+        if (key === 'filterCutoff') {
+          // Logarithmic sweep 80Hz -> 18000Hz for natural musical feel
+          const hz = Math.round(80 * Math.pow(18000 / 80, normalized));
+          setAudioParams(prev => ({ ...prev, filterCutoff: hz }));
+        } else if (key === 'filterResonance') {
+          setAudioParams(prev => ({ ...prev, filterResonance: 0.1 + normalized * 18.0 }));
+        } else if (key === 'tapeSpeed') {
+          setAudioParams(prev => ({ ...prev, tapeSpeed: 0.5 + normalized * 1.0 }));
+        } else if (key === 'stutterSpeed') {
+          setAudioParams(prev => ({ ...prev, stutterSpeed: 0.05 + normalized * 0.30 }));
+        } else {
+          setAudioParams(prev => ({ ...prev, [key]: normalized }));
+        }
+      }
+      // 3. Action triggers (Pads / Buttons)
+      else if (target.startsWith('action.') && isTrigger) {
+        const h = actionHandlersRef.current;
+        if (target === 'action.playToggle' && h.playToggle) h.playToggle();
+        else if (target === 'action.tapeFreeze' && h.tapeFreeze) h.tapeFreeze();
+        else if (target === 'action.randomize' && h.randomize) h.randomize();
+        else if (target === 'action.nextTrack' && h.nextTrack) h.nextTrack();
+        else if (target === 'action.prevTrack' && h.prevTrack) h.prevTrack();
+        else if (target === 'action.preset0' && h.applyPreset) h.applyPreset(PRESETS[0]);
+        else if (target === 'action.preset1' && h.applyPreset) h.applyPreset(PRESETS[1]);
+        else if (target === 'action.preset2' && h.applyPreset) h.applyPreset(PRESETS[2]);
+        else if (target === 'action.preset3' && h.applyPreset) h.applyPreset(PRESETS[3]);
+      }
+    });
   }, []);
 
   // Initialize Web Audio Engine
@@ -732,6 +761,16 @@ export const App: React.FC = () => {
     }
   };
 
+  // Synchronize latest action handlers for MIDI Engine dispatch
+  actionHandlersRef.current = {
+    playToggle: handlePlayToggle,
+    tapeFreeze: handleToggleTapeFreeze,
+    randomize: handleRandomize,
+    nextTrack: handleNextTrack,
+    prevTrack: handlePrevTrack,
+    applyPreset: handleApplyPreset
+  };
+
   // Studio & Live Performance Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -896,8 +935,16 @@ export const App: React.FC = () => {
           }}
           onApplyPreset={handleApplyPreset}
           onRandomize={handleRandomize}
+          onOpenMidiModal={() => setIsMidiModalOpen(true)}
         />
       </div>
+
+      {/* Interactive Web MIDI Configurator Modal */}
+      <MidiModal
+        isOpen={isMidiModalOpen}
+        onClose={() => setIsMidiModalOpen(false)}
+        midiEngine={midiEngineRef.current}
+      />
 
       {/* FLOATING SIDE DRAWER: PLAYLIST QUEUE */}
       <PlaylistPanel
