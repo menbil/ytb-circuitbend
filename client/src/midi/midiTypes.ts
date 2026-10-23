@@ -100,3 +100,4 @@ export interface MidiActivityEvent {
   targetMapped?: MidiTarget;
   timestamp: number;
 }
+

@@ -271,3 +271,4 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
     </div>
   );
 };
+

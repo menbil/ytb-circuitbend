@@ -109,3 +109,4 @@ describe('Web MIDI Engine & Novation Launch Control Mapping', () => {
     assert.strictEqual(dispatchedTarget, 'video.luminance');
   });
 });
+
