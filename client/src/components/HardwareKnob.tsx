@@ -12,7 +12,7 @@ interface HardwareKnobProps {
   formatValue?: (val: number) => string;
 }
 
-export const HardwareKnob: React.FC<HardwareKnobProps> = ({
+const HardwareKnobComponent: React.FC<HardwareKnobProps> = ({
   label,
   value,
   min,
@@ -169,4 +169,6 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
     </div>
   );
 };
+
+export const HardwareKnob = React.memo(HardwareKnobComponent);
 

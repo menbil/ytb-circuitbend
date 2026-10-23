@@ -28,13 +28,16 @@ interface VideoViewportProps {
 }
 
 // Inner R3F Quad that projects the VideoTexture with CircuitBendShader
+// Uses React.memo and persistent unit geometry to prevent GPU buffer reallocation during live knob tweaks
 const CircuitScreen: React.FC<{
   videoElement: HTMLVideoElement | null;
   params: VideoBendingParams;
   isFreezeActive?: boolean;
   audioEngine?: AudioCircuitEngine | null;
-}> = ({ videoElement, params, isFreezeActive = false, audioEngine }) => {
+}> = React.memo(({ videoElement, params, isFreezeActive = false, audioEngine }) => {
   const meshRef = useRef<THREE.Mesh>(null);
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
   const { size, viewport } = useThree();
 
   // Stable direct VideoTexture creation from videoElement
@@ -88,37 +91,39 @@ const CircuitScreen: React.FC<{
     u.uTime.value = state.clock.getElapsedTime();
     u.uResolution.value.set(size.width, size.height);
     
+    const p = paramsRef.current;
+
     // Core Glitch
-    u.uGlitchIntensity.value = Number.isFinite(params.glitchIntensity) ? params.glitchIntensity : 0;
-    u.uRgbShift.value = Number.isFinite(params.rgbShift) ? params.rgbShift : 0;
-    u.uScanlines.value = Number.isFinite(params.scanlines) ? params.scanlines : 0;
-    u.uColorBleed.value = Number.isFinite(params.colorBleed) ? params.colorBleed : 0;
-    u.uFeedback.value = Number.isFinite(params.feedback) ? params.feedback : 0;
-    u.uNoise.value = Number.isFinite(params.noise) ? params.noise : 0;
+    u.uGlitchIntensity.value = Number.isFinite(p.glitchIntensity) ? p.glitchIntensity : 0;
+    u.uRgbShift.value = Number.isFinite(p.rgbShift) ? p.rgbShift : 0;
+    u.uScanlines.value = Number.isFinite(p.scanlines) ? p.scanlines : 0;
+    u.uColorBleed.value = Number.isFinite(p.colorBleed) ? p.colorBleed : 0;
+    u.uFeedback.value = Number.isFinite(p.feedback) ? p.feedback : 0;
+    u.uNoise.value = Number.isFinite(p.noise) ? p.noise : 0;
 
     // Vaporwave, VHS & CRT
-    u.uVaporwaveTint.value = Number.isFinite(params.vaporwaveTint) ? params.vaporwaveTint : 0;
-    u.uCrtCurvature.value = Number.isFinite(params.crtCurvature) ? params.crtCurvature : 0;
-    u.uApertureGrille.value = Number.isFinite(params.apertureGrille) ? params.apertureGrille : 0;
-    u.uVhsHeadSwitching.value = Number.isFinite(params.vhsHeadSwitching) ? params.vhsHeadSwitching : 0;
-    u.uVHoldDrift.value = Number.isFinite(params.vHoldDrift) ? params.vHoldDrift : 0;
+    u.uVaporwaveTint.value = Number.isFinite(p.vaporwaveTint) ? p.vaporwaveTint : 0;
+    u.uCrtCurvature.value = Number.isFinite(p.crtCurvature) ? p.crtCurvature : 0;
+    u.uApertureGrille.value = Number.isFinite(p.apertureGrille) ? p.apertureGrille : 0;
+    u.uVhsHeadSwitching.value = Number.isFinite(p.vhsHeadSwitching) ? p.vhsHeadSwitching : 0;
+    u.uVHoldDrift.value = Number.isFinite(p.vHoldDrift) ? p.vHoldDrift : 0;
 
     // Video Bends
-    u.uMeshDisplacement.value = Number.isFinite(params.meshDisplacement) ? params.meshDisplacement : 0;
-    u.uChromaSmear.value = Number.isFinite(params.chromaSmear) ? params.chromaSmear : 0;
-    u.uAudioReact.value = Number.isFinite(params.audioReact) ? params.audioReact : 0;
+    u.uMeshDisplacement.value = Number.isFinite(p.meshDisplacement) ? p.meshDisplacement : 0;
+    u.uChromaSmear.value = Number.isFinite(p.chromaSmear) ? p.chromaSmear : 0;
+    u.uAudioReact.value = Number.isFinite(p.audioReact) ? p.audioReact : 0;
     const rawBass = audioEngine ? audioEngine.getBassEnergy() : 0.0;
     u.uAudioBass.value = Number.isFinite(rawBass) ? rawBass : 0.0;
-    u.uLuminance.value = Number.isFinite(params.luminance) ? params.luminance : 0;
+    u.uLuminance.value = Number.isFinite(p.luminance) ? p.luminance : 0;
   });
 
   return (
-    <mesh ref={meshRef}>
-      <planeGeometry args={[planeWidth, planeHeight]} />
+    <mesh ref={meshRef} scale={[planeWidth, planeHeight, 1]}>
+      <planeGeometry args={[1, 1]} />
       <primitive object={shaderMaterial} attach="material" />
     </mesh>
   );
-};
+});
 
 export const VideoViewport: React.FC<VideoViewportProps> = ({
   videoElement,

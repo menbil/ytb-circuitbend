@@ -498,8 +498,13 @@ export class AudioCircuitEngine {
     return this.toggleTapeFreeze(nominalRate, 0.12, onStateChange);
   }
 
+  private lastBitcrush: number = -1;
+  private lastDrive: number = -1;
+
   private updateBitcrushCurve(amount: number) {
     if (!this.bitcrusherNode) return;
+    if (Math.abs(amount - this.lastBitcrush) < 0.005) return;
+    this.lastBitcrush = amount;
     this.bitcrusherNode.curve = computeBitcrushCurve(amount) as any;
   }
 
@@ -509,6 +514,8 @@ export class AudioCircuitEngine {
    */
   private updateDriveCurve(amount: number) {
     if (!this.driveNode) return;
+    if (Math.abs(amount - this.lastDrive) < 0.005) return;
+    this.lastDrive = amount;
     this.driveNode.curve = computeDriveCurve(amount) as any;
   }
 

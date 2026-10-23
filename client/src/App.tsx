@@ -277,13 +277,13 @@ export const App: React.FC = () => {
       // 1. Video parameters
       if (target.startsWith('video.')) {
         const key = target.replace('video.', '') as keyof VideoBendingParams;
-        setActivePresetId('custom');
+        setActivePresetId(prev => prev === 'custom' ? prev : 'custom');
         setVideoParams(prev => ({ ...prev, [key]: normalized }));
       }
       // 2. Audio parameters
       else if (target.startsWith('audio.')) {
         const key = target.replace('audio.', '');
-        setActivePresetId('custom');
+        setActivePresetId(prev => prev === 'custom' ? prev : 'custom');
         if (key === 'filterCutoff') {
           // Logarithmic sweep 80Hz -> 18000Hz for natural musical feel
           const hz = Math.round(80 * Math.pow(18000 / 80, normalized));
