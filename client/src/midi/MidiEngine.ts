@@ -16,7 +16,7 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
   id: 'launch-control',
   name: 'Novation Launch Control',
   ccMap: {
-    // Top Row (Knobs 1 to 8): Factory CC 21 to 28
+    // Top Row (Knobs 1 to 8): Factory CC 21 to 28 -> VIDEO
     21: 'video.glitchIntensity',
     22: 'video.rgbShift',
     23: 'video.scanlines',
@@ -26,37 +26,17 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     27: 'video.vaporwaveTint',
     28: 'video.crtCurvature',
 
-    // Bottom Row (Knobs 9 to 16): Factory Send B CC 29 to 36 & Fallback 49 to 56
-    29: 'audio.drive',
-    30: 'audio.bitcrush',
-    31: 'audio.filterCutoff',
-    32: 'audio.filterResonance',
-    33: 'audio.tapeSpeed',
-    34: 'audio.wowDepth',
-    35: 'audio.flutterDepth',
-    36: 'audio.reverbWet',
+    // Bottom Row (Knobs 9 to 16): Factory CC 41 to 48 -> AUDIO
+    41: 'audio.drive',
+    42: 'audio.bitcrush',
+    43: 'audio.filterCutoff',
+    44: 'audio.filterResonance',
+    45: 'audio.tapeSpeed',
+    46: 'audio.wowDepth',
+    47: 'audio.flutterDepth',
+    48: 'audio.reverbWet',
 
-    // Alternate Knobs 9 to 16 CCs (CC 49 to 56)
-    49: 'audio.drive',
-    50: 'audio.bitcrush',
-    51: 'audio.filterCutoff',
-    52: 'audio.filterResonance',
-    53: 'audio.tapeSpeed',
-    54: 'audio.wowDepth',
-    55: 'audio.flutterDepth',
-    56: 'audio.reverbWet',
-
-    // CC Mode for Pads (Launch Control CC 41 to 48, CC 73 to 80, CC 114 to 121, CC 9 to 16, CC 1 to 8)
-    41: 'action.playToggle',   // Pad 1: Play / Pause
-    42: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
-    43: 'action.randomize',    // Pad 3: Randomize / Glitch Macro
-    44: 'action.resetClean',   // Pad 4: Reset Clean / Bypass All FX
-    45: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot
-    46: 'action.recordToggle', // Pad 6: Video Session Record
-    47: 'action.preset1',      // Pad 7: Preset Abandoned Mall
-    48: 'action.preset2',      // Pad 8: Preset Broken VHS
-
-    // Alternate CC numbers for Launch Control / Ableton templates (CC 73 to 80)
+    // CC Mode for Pads (Novation Launch Control CC 73 to 80 & 114 to 121)
     73: 'action.playToggle',   // Pad 1: Play / Pause
     74: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
     75: 'action.randomize',    // Pad 3: Randomize / Glitch Macro
@@ -66,108 +46,64 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     79: 'action.preset1',      // Pad 7: Preset Abandoned Mall
     80: 'action.preset2',      // Pad 8: Preset Broken VHS
 
-    // Alternate CC numbers for Launch Control / Ableton templates (CC 114 to 121)
-    114: 'action.playToggle',  // Pad 1
-    115: 'action.tapeFreeze',  // Pad 2
-    116: 'action.randomize',   // Pad 3
-    117: 'action.resetClean',  // Pad 4
-    118: 'action.snapshot',    // Pad 5
-    119: 'action.recordToggle',// Pad 6
-    120: 'action.preset1',     // Pad 7
-    121: 'action.preset2',     // Pad 8
-
-    // Factory Pad CC fallbacks (CC 9..12 & 25..28)
-    9: 'action.playToggle',
-    10: 'action.tapeFreeze',   // Pad 2
-    11: 'action.randomize',
-    12: 'action.resetClean',
-    // 1-indexed CC fallbacks
-    1: 'action.playToggle',
-    2: 'action.tapeFreeze',    // Pad 2
-    3: 'action.randomize',
-    4: 'action.resetClean'
+    114: 'action.playToggle',
+    115: 'action.tapeFreeze',
+    116: 'action.randomize',
+    117: 'action.resetClean',
+    118: 'action.snapshot',
+    119: 'action.recordToggle',
+    120: 'action.preset1',
+    121: 'action.preset2'
   },
   noteMap: {
-    // Factory Template 1: Pads 1-4 (9..12) & Pads 5-8 (25..28)
-    9: 'action.playToggle',    // Pad 1
-    10: 'action.tapeFreeze',   // Pad 2 (Tape Stop & Buffer Freeze)
-    11: 'action.randomize',    // Pad 3
-    12: 'action.resetClean',   // Pad 4 (Reset Clean)
-    25: 'action.snapshot',     // Pad 5 (Photo Snapshot)
-    26: 'action.recordToggle', // Pad 6 (Video Record)
-    27: 'action.preset1',      // Pad 7 (Abandoned Mall)
-    28: 'action.preset2',      // Pad 8 (Broken VHS)
+    // Factory Template 1: Pads 1-4 (Notes 9..12) & Pads 5-8 (Notes 25..28)
+    9: 'action.playToggle',    // Pad 1: Play / Pause
+    10: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
+    11: 'action.randomize',    // Pad 3: Randomize Macro
+    12: 'action.resetClean',   // Pad 4: Reset Clean / Bypass All FX
+    25: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot
+    26: 'action.recordToggle', // Pad 6: Video Session Record
+    27: 'action.preset1',      // Pad 7: Preset Abandoned Mall
+    28: 'action.preset2',      // Pad 8: Preset Broken VHS
 
-    // Factory Template 2: Pads 1-4 (13..16) & Pads 5-8 (29..32)
-    13: 'action.playToggle',   // Pad 1
-    14: 'action.tapeFreeze',   // Pad 2
-    15: 'action.randomize',    // Pad 3
-    16: 'action.resetClean',   // Pad 4
-    29: 'action.snapshot',     // Pad 5
-    30: 'action.recordToggle', // Pad 6
-    31: 'action.preset1',      // Pad 7
-    32: 'action.preset2',      // Pad 8
+    // Factory Template 2: Pads 1-4 (Notes 13..16) & Pads 5-8 (Notes 29..32)
+    13: 'action.playToggle',
+    14: 'action.tapeFreeze',
+    15: 'action.randomize',
+    16: 'action.resetClean',
+    29: 'action.snapshot',
+    30: 'action.recordToggle',
+    31: 'action.preset1',
+    32: 'action.preset2',
 
-    // Factory Template 3: Pads 1-4 (17..20) & Pads 5-8 (33..36)
-    17: 'action.playToggle',   // Pad 1
-    18: 'action.tapeFreeze',   // Pad 2
-    19: 'action.randomize',    // Pad 3
-    20: 'action.resetClean',   // Pad 4
-    33: 'action.snapshot',     // Pad 5
-    34: 'action.recordToggle', // Pad 6
-    35: 'action.preset1',      // Pad 7
+    // Factory Template 3: Pads 1-4 (Notes 17..20) & Pads 5-7 (Notes 33..35)
+    17: 'action.playToggle',
+    18: 'action.tapeFreeze',
+    19: 'action.randomize',
+    20: 'action.resetClean',
+    33: 'action.snapshot',
+    34: 'action.recordToggle',
+    35: 'action.preset1',
 
-    // Factory Template 4: Pads 1-4 (21..24)
-    21: 'action.playToggle',   // Pad 1
-    22: 'action.tapeFreeze',   // Pad 2
-    23: 'action.randomize',    // Pad 3
-    24: 'action.resetClean',   // Pad 4
+    // Factory Template 4: Pads 1-4 (Notes 21..24)
+    21: 'action.playToggle',
+    22: 'action.tapeFreeze',
+    23: 'action.randomize',
+    24: 'action.resetClean',
 
-    // User Template 1: Standard Drum Octave 1 (C1..G1, Notes 36..43)
-    36: 'action.playToggle',   // Pad 1 (C1)
-    37: 'action.tapeFreeze',   // Pad 2 (C#1 - Tape Stop & Buffer Freeze)
-    38: 'action.tapeFreeze',   // Pad 2 fallback (D1 white key / diatonic mode)
-    39: 'action.randomize',    // Pad 3 (D#1)
-    40: 'action.resetClean',   // Pad 4 (E1)
-    41: 'action.snapshot',     // Pad 5 (F1)
-    42: 'action.recordToggle', // Pad 6 (F#1)
-    43: 'action.preset1',      // Pad 7 (G1)
-    44: 'action.preset2',      // Pad 8 (G#1)
+    // User Template: Notes 36..43 (C1..G1 chromatic)
+    36: 'action.playToggle',   // Pad 1
+    37: 'action.tapeFreeze',   // Pad 2 (Tape Stop & Freeze)
+    38: 'action.randomize',    // Pad 3
+    39: 'action.resetClean',   // Pad 4
+    40: 'action.snapshot',     // Pad 5
+    41: 'action.recordToggle', // Pad 6
+    42: 'action.preset1',      // Pad 7
+    43: 'action.preset2',      // Pad 8
 
-    // User Template 2: Standard Drum Octave 2 (C2..G2, Notes 48..55)
-    48: 'action.playToggle',   // Pad 1 (C2)
-    49: 'action.tapeFreeze',   // Pad 2 (C#2)
-    50: 'action.tapeFreeze',   // Pad 2 fallback (D2 white key)
-    51: 'action.randomize',    // Pad 3 (D#2)
-    52: 'action.resetClean',   // Pad 4 (E2)
-    53: 'action.snapshot',     // Pad 5 (F2)
-    54: 'action.recordToggle', // Pad 6 (F#2)
-    55: 'action.preset1',      // Pad 7 (G2)
-
-    // User Template 3: Standard Drum Octave 3 (C3..G3, Notes 60..67)
-    60: 'action.playToggle',   // Pad 1 (C3)
-    61: 'action.tapeFreeze',   // Pad 2 (C#3)
-    62: 'action.tapeFreeze',   // Pad 2 fallback (D3 white key)
-    63: 'action.randomize',    // Pad 3 (D#3)
-    64: 'action.resetClean',   // Pad 4 (E3)
-    65: 'action.snapshot',     // Pad 5 (F3)
-    66: 'action.recordToggle', // Pad 6 (F#3)
-    67: 'action.preset1',      // Pad 7 (G3)
-
-    // User Template 4: Standard Drum Octave 4 (C4..G4, Notes 72..79)
-    72: 'action.playToggle',   // Pad 1 (C4)
-    73: 'action.tapeFreeze',   // Pad 2 (C#4)
-    74: 'action.tapeFreeze',   // Pad 2 fallback (D4 white key)
-    75: 'action.randomize',    // Pad 3 (D#4)
-    76: 'action.resetClean',   // Pad 4 (E4)
-    77: 'action.snapshot',     // Pad 5 (F4)
-    78: 'action.recordToggle', // Pad 6 (F#4)
-    79: 'action.preset1',      // Pad 7 (G4)
-
-    // 1-indexed & 0-indexed generic pads
-    0: 'action.playToggle',    // Pad 1 (0-indexed)
-    1: 'action.tapeFreeze',    // Pad 2 (0-indexed)
-    2: 'action.tapeFreeze'     // Pad 2 (1-indexed)
+    // Generic 0 & 1
+    0: 'action.playToggle',
+    1: 'action.tapeFreeze'
   }
 };
 
@@ -260,7 +196,7 @@ export const GENERIC_PROFILE: MidiProfile = {
   }
 };
 
-const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v6';
+const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v7';
 
 export type MidiDispatchFn = (target: MidiTarget, normalizedValue: number, isTrigger: boolean) => void;
 
@@ -459,10 +395,8 @@ export class MidiEngine {
   }
 
   private getMergedCcMap(): Record<number, MidiTarget> {
-    // Precedence: Generic fallback -> Launch Control XL -> Launch Control primary -> Custom user overrides
     return {
       ...GENERIC_PROFILE.ccMap,
-      ...LAUNCH_CONTROL_XL_PROFILE.ccMap,
       ...LAUNCH_CONTROL_PROFILE.ccMap,
       ...this.customCcMap
     };
@@ -471,7 +405,6 @@ export class MidiEngine {
   private getMergedNoteMap(): Record<number, MidiTarget> {
     return {
       ...GENERIC_PROFILE.noteMap,
-      ...LAUNCH_CONTROL_XL_PROFILE.noteMap,
       ...LAUNCH_CONTROL_PROFILE.noteMap,
       ...this.customNoteMap
     };

@@ -73,9 +73,9 @@ describe('Web MIDI Engine & Novation Launch Control Mapping', () => {
     assert.strictEqual(dispatchedTarget, 'video.glitchIntensity');
     assert.ok(Math.abs(dispatchedVal - (64 / 127)) < 1e-4);
 
-    // Simulate Launch Control turning Knob 9 (CC 29) to value 127 (1.0)
+    // Simulate Launch Control turning Knob 9 (CC 41) to value 127 (1.0)
     (engine as any).handleMidiMessage(
-      { data: new Uint8Array([0xb0, 29, 127]) },
+      { data: new Uint8Array([0xb0, 41, 127]) },
       'Launch Control'
     );
 
