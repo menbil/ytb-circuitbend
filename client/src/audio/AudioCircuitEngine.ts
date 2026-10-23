@@ -373,16 +373,19 @@ export class AudioCircuitEngine {
   }
 
   public isStopped(): boolean {
-    return this.isTapeStopped;
+    return this.isTapeStopped || this.isFrozen;
   }
 
   public isFreezeActive(): boolean {
-    return this.isFrozen;
+    return this.isTapeStopped || this.isFrozen;
+  }
+
+  public isTapeFreezeActive(): boolean {
+    return this.isTapeStopped || this.isFrozen;
   }
 
   /**
    * Activates or disables the Granular Buffer Stutter / Freeze loop.
-   * Seamlessly coordinates with Tape Stop: if Tape Stop occurs, freeze loop releases.
    */
   public setFreeze(frozen: boolean, sliceDuration: number = 0.12, onStateChange?: (frozen: boolean) => void): boolean {
     if (!this.ctx || !this.stutterInputGain || !this.stutterFeedbackGain || !this.stutterDelayNode || !this.stutterDryGain || !this.stutterWetGain) {
@@ -412,23 +415,20 @@ export class AudioCircuitEngine {
     return this.isFrozen;
   }
 
-  public toggleFreeze(sliceDuration: number = 0.12, onStateChange?: (frozen: boolean) => void): boolean {
-    return this.setFreeze(!this.isFrozen, sliceDuration, onStateChange);
-  }
-
   /**
-   * Toggles Tape Stop:
-   * - If running: progressively decelerates speed & pitch down to 0 and pauses
-   * - If stopped: starts playback and smoothly accelerates back to nominal speed & pitch
+   * Toggles Unified Tape Stop & Buffer Freeze:
+   * - BRAKE & FREEZE: Progressively decelerates playback speed & pitch down with tape inertia.
+   *   Seamlessly engages granular freeze / buffer stutter so the audio locks into
+   *   a repeating tape slice and the video frame freezes, while CRT / glitch shaders continue pulsing.
+   * - RESUME: Releases the freeze loop and accelerates the tape deck back to nominal speed & pitch.
    */
-  public toggleTapeStop(nominalRate: number = 1.0, onStateChange?: (stopped: boolean) => void): boolean {
+  public toggleTapeFreeze(
+    nominalRate: number = 1.0,
+    sliceDuration: number = 0.12,
+    onStateChange?: (active: boolean) => void
+  ): boolean {
     if (!this.connectedElement) return false;
     const media = this.connectedElement;
-
-    // Cleanly disengage freeze if active so tape stop doesn't get masked by feedback loop
-    if (this.isFrozen) {
-      this.setFreeze(false);
-    }
 
     // Clear any active deceleration / acceleration
     if (this.tapeInterval) {
@@ -436,10 +436,16 @@ export class AudioCircuitEngine {
       this.tapeInterval = null;
     }
 
-    if (!this.isTapeStopped) {
-      // 1. BRAKE: Decelerate down to ultra-slow tape drag (keeps video decoding & shaders pulsing)
+    const currentlyActive = this.isTapeStopped || this.isFrozen;
+
+    if (!currentlyActive) {
+      // 1. BRAKE & FREEZE
       this.isTapeStopped = true;
+      this.isFrozen = true;
       if (onStateChange) onStateChange(true);
+
+      // Engage audio granular freeze loop
+      this.setFreeze(true, sliceDuration);
 
       let current = media.playbackRate || nominalRate;
       this.tapeInterval = setInterval(() => {
@@ -448,14 +454,17 @@ export class AudioCircuitEngine {
           clearInterval(this.tapeInterval);
           this.tapeInterval = null;
           media.playbackRate = 0.06;
-          // Keep video playing in extreme slow-motion so shaders & video texture remain 100% active!
         } else {
           media.playbackRate = current;
         }
       }, 35);
+
+      return true;
     } else {
-      // 2. RESUME: Spin back up smoothly to nominal speed & pitch
+      // 2. RESUME: Disengage freeze loop & spin motor back up smoothly
       this.isTapeStopped = false;
+      this.isFrozen = false;
+      this.setFreeze(false);
       if (onStateChange) onStateChange(false);
 
       let current = media.playbackRate || 0.06;
@@ -469,14 +478,22 @@ export class AudioCircuitEngine {
           media.playbackRate = current;
         }
       }, 35);
-    }
 
-    return this.isTapeStopped;
+      return false;
+    }
+  }
+
+  public toggleFreeze(sliceDuration: number = 0.12, onStateChange?: (frozen: boolean) => void): boolean {
+    return this.toggleTapeFreeze(1.0, sliceDuration, onStateChange);
+  }
+
+  public toggleTapeStop(nominalRate: number = 1.0, onStateChange?: (stopped: boolean) => void): boolean {
+    return this.toggleTapeFreeze(nominalRate, 0.12, onStateChange);
   }
 
   private updateBitcrushCurve(amount: number) {
     if (!this.bitcrusherNode) return;
-    this.bitcrusherNode.curve = computeBitcrushCurve(amount);
+    this.bitcrusherNode.curve = computeBitcrushCurve(amount) as any;
   }
 
   /**
@@ -485,7 +502,7 @@ export class AudioCircuitEngine {
    */
   private updateDriveCurve(amount: number) {
     if (!this.driveNode) return;
-    this.driveNode.curve = computeDriveCurve(amount);
+    this.driveNode.curve = computeDriveCurve(amount) as any;
   }
 
   public updateParams(params: AudioBendingParams) {

@@ -12,12 +12,14 @@ interface VideoViewportProps {
   isPlaying: boolean;
   isTapeStopped?: boolean;
   isFreezeActive?: boolean;
+  isTapeFreeze?: boolean;
   audioEngine?: AudioCircuitEngine | null;
   showTimeline?: boolean;
   onPlayToggle: () => void;
   onNext: () => void;
   onPrev: () => void;
   onTapeStop?: () => void;
+  onToggleTapeFreeze?: () => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
   title?: string;
   duration?: number;
@@ -124,18 +126,22 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
   isPlaying,
   isTapeStopped = false,
   isFreezeActive = false,
+  isTapeFreeze,
   audioEngine = null,
   showTimeline = true,
   onPlayToggle,
   onNext,
   onPrev,
   onTapeStop,
+  onToggleTapeFreeze,
   onCanvasReady,
   title = 'NO SIGNAL',
   duration = 0,
   currentTime = 0,
   onSeek
 }) => {
+  const isStoppedAndFrozen = isTapeFreeze ?? (isTapeStopped || isFreezeActive);
+  const handleTapeFreezeAction = onToggleTapeFreeze || onTapeStop;
   const containerRef = useRef<HTMLDivElement>(null);
   const [isControlsVisible, setIsControlsVisible] = useState(false);
   const hideTimeoutRef = useRef<any>(null);
@@ -205,7 +211,7 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
         <CircuitScreen 
           videoElement={videoElement} 
           params={videoParams} 
-          isFreezeActive={isFreezeActive}
+          isFreezeActive={isStoppedAndFrozen}
           audioEngine={audioEngine}
         />
       </Canvas>
@@ -223,16 +229,14 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
       <div className="absolute top-14 left-4 right-4 z-20 flex items-center justify-between pointer-events-none opacity-80">
         <div className="flex items-center gap-2 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full border border-neutral-800 font-mono text-[11px]">
           <span className={`w-2 h-2 rounded-full ${
-            isFreezeActive
-              ? 'bg-cyan-400 animate-ping'
-              : (isTapeStopped 
-                ? 'bg-rose-500 animate-ping' 
-                : (isPlaying ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'))
+            isStoppedAndFrozen
+              ? 'bg-gradient-to-r from-rose-500 to-cyan-400 animate-ping'
+              : (isPlaying ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400')
           }`}></span>
           <span className="text-neutral-300 font-bold tracking-wider">
-            {isFreezeActive 
-              ? 'GRANULAR FREEZE // BUFFER STUTTER' 
-              : (isTapeStopped ? 'TAPE SLOW DRAG // DETUNED' : (isPlaying ? 'LIVE STREAM' : 'PAUSED'))}
+            {isStoppedAndFrozen 
+              ? 'TAPE STOP // BUFFER FROZEN' 
+              : (isPlaying ? 'LIVE STREAM' : 'PAUSED')}
           </span>
           <span className="text-neutral-500">|</span>
           <span className="text-amber-400 font-bold truncate max-w-[340px]">
@@ -241,12 +245,12 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
         </div>
 
         <div className="hidden sm:flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-full border border-neutral-800 font-mono text-[10px] text-neutral-400">
-          <span>{isFreezeActive ? 'FREEZE ACTIF (STUTTER AUDIO & IMAGE FIGÉE)' : (isTapeStopped ? 'TAPE STOP ACTIF (EFFETS VISUELS ON)' : (isPlaying ? 'CLIC = PAUSE' : 'CLIC = PLAY'))}</span>
+          <span>{isStoppedAndFrozen ? 'TAPE STOP & BUFFER FREEZE ACTIF (EFFETS VISUELS & SHADERS ON)' : (isPlaying ? 'CLIC = PAUSE' : 'CLIC = PLAY')}</span>
         </div>
       </div>
 
       {/* Initial Play Overlay (Only on cold start before first playback) */}
-      {!isPlaying && currentTime === 0 && !isTapeStopped && !isFreezeActive && (
+      {!isPlaying && currentTime === 0 && !isStoppedAndFrozen && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/55 backdrop-blur-[2px] transition-colors pointer-events-none">
           <div className="w-16 h-16 rounded-full bg-amber-500/95 flex items-center justify-center text-black shadow-[0_0_30px_rgba(255,157,0,0.7)] mb-3">
             <Play size={28} fill="black" className="ml-1" />
@@ -311,18 +315,18 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
               <SkipForward size={14} />
             </button>
 
-            {onTapeStop && (
+            {handleTapeFreezeAction && (
               <button
-                onClick={onTapeStop}
-                className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold flex items-center gap-1 ml-2 transition-all ${
-                  isTapeStopped
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse'
+                onClick={handleTapeFreezeAction}
+                className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold flex items-center gap-1 ml-2 transition-all border ${
+                  isStoppedAndFrozen
+                    ? 'bg-gradient-to-r from-rose-600 to-cyan-600 text-white border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.6)] animate-pulse'
                     : 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700'
                 }`}
-                title={isTapeStopped ? 'Relancer la bande' : 'Freinage de la bande'}
+                title={isStoppedAndFrozen ? 'Relancer la bande et le flux [Touche T ou F]' : 'Arrêt de bande & Gel instantané [Touche T ou F]'}
               >
-                <Zap size={10} className={isTapeStopped ? 'text-white' : 'text-rose-400'} />
-                <span>{isTapeStopped ? 'RESUME TAPE' : 'TAPE STOP'}</span>
+                <Zap size={10} className={isStoppedAndFrozen ? 'text-cyan-200' : 'text-rose-400'} />
+                <span>{isStoppedAndFrozen ? 'RESUME' : 'TAPE STOP // FREEZE'}</span>
               </button>
             )}
           </div>

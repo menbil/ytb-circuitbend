@@ -43,6 +43,7 @@ interface RackControlsProps {
   analyser: AnalyserNode | null;
   isTapeStopped?: boolean;
   isFreezeActive?: boolean;
+  isTapeFreeze?: boolean;
   isRecording?: boolean;
   recordingDuration?: number;
   midiConnected?: boolean;
@@ -53,6 +54,7 @@ interface RackControlsProps {
   onUpdateLfo?: (partial: Partial<LfoConfig>) => void;
   onToggleTimeline?: () => void;
   onToggleFreeze?: () => void;
+  onToggleTapeFreeze?: () => void;
   onToggleRecord?: () => void;
   onToggleZen?: () => void;
   onTakeSnapshot?: () => void;
@@ -64,7 +66,7 @@ interface RackControlsProps {
   onUpdateAudio: (params: Partial<AudioBendingParams>) => void;
   onApplyPreset: (preset: Preset) => void;
   onRandomize: () => void;
-  onTapeStop: () => void;
+  onTapeStop?: () => void;
 }
 
 export const RackControls: React.FC<RackControlsProps> = ({
@@ -74,6 +76,7 @@ export const RackControls: React.FC<RackControlsProps> = ({
   analyser,
   isTapeStopped = false,
   isFreezeActive = false,
+  isTapeFreeze,
   isRecording = false,
   recordingDuration = 0,
   midiConnected = false,
@@ -84,6 +87,7 @@ export const RackControls: React.FC<RackControlsProps> = ({
   onUpdateLfo,
   onToggleTimeline,
   onToggleFreeze,
+  onToggleTapeFreeze,
   onToggleRecord,
   onToggleZen,
   onTakeSnapshot,
@@ -97,6 +101,9 @@ export const RackControls: React.FC<RackControlsProps> = ({
   onRandomize,
   onTapeStop
 }) => {
+  const isStoppedAndFrozen = isTapeFreeze ?? (isTapeStopped || isFreezeActive);
+  const handleTapeFreezeAction = onToggleTapeFreeze || onTapeStop || onToggleFreeze;
+
   // Two unified, crystal-clear categories: 'video' vs 'audio'
   const [activeCategory, setActiveCategory] = useState<'video' | 'audio'>('video');
   const [isMinimized, setIsMinimized] = useState(false);
@@ -269,35 +276,30 @@ export const RackControls: React.FC<RackControlsProps> = ({
             </button>
           )}
 
-          {/* Granular Freeze / Stutter */}
-          {onToggleFreeze && (
+          {/* Unified Tape Stop / Freeze */}
+          {handleTapeFreezeAction && (
             <button
-              onClick={onToggleFreeze}
-              className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold flex items-center gap-1 transition-all border ${
-                isFreezeActive
-                  ? 'bg-cyan-500 text-black border-cyan-300 shadow-[0_0_14px_#06b6d4] animate-pulse'
-                  : 'bg-neutral-900/90 text-cyan-400 border-cyan-800/80 hover:bg-cyan-950/60'
+              onClick={handleTapeFreezeAction}
+              className={`px-2.5 py-0.5 rounded font-mono text-[10px] font-bold flex items-center gap-1.5 transition-all border ${
+                isStoppedAndFrozen
+                  ? 'bg-gradient-to-r from-rose-600 to-cyan-600 text-white border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.7)] animate-pulse'
+                  : 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-600/80 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
               }`}
-              title={isFreezeActive ? 'Dégeler le flux [Touche F]' : 'Geler et boucler la tranche audio/vidéo (Buffer Freeze) [Touche F]'}
+              title={
+                isStoppedAndFrozen
+                  ? 'Relancer le moteur de bande et le flux [Touche T ou F]'
+                  : 'Arrêt de bande & Gel de la vidéo (Tape Stop & Freeze) [Touche T ou F]'
+              }
             >
-              <Snowflake size={11} className={isFreezeActive ? 'animate-spin' : ''} />
-              <span>{isFreezeActive ? 'FREEZED' : 'FREEZE'}</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isStoppedAndFrozen ? 'bg-cyan-300 animate-ping' : 'bg-rose-500 animate-pulse'
+                }`}
+              />
+              <Snowflake size={11} className={isStoppedAndFrozen ? 'animate-spin text-cyan-200' : 'text-rose-400'} />
+              <span>{isStoppedAndFrozen ? 'RESUME // DÉGELER' : 'TAPE STOP // FREEZE'}</span>
             </button>
           )}
-
-          {/* Tape Stop Brake */}
-          <button
-            onClick={onTapeStop}
-            className={`px-2.5 py-0.5 rounded font-mono text-[10px] font-bold flex items-center gap-1 transition-all ${
-              isTapeStopped
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.6)] animate-pulse'
-                : 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-600/80 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
-            }`}
-            title={isTapeStopped ? 'Relancer le moteur de bande [Touche T]' : 'Arrêt de la bande [Touche T]'}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${isTapeStopped ? 'bg-white' : 'bg-rose-500 animate-pulse'}`}></span>
-            <span>{isTapeStopped ? 'RESUME TAPE' : 'TAPE STOP'}</span>
-          </button>
 
           {/* MIDI Controller Badge */}
           {midiConnected && (

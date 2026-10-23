@@ -34,8 +34,7 @@ export const App: React.FC = () => {
 
   // Playback State
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [isTapeStopped, setIsTapeStopped] = useState<boolean>(false);
-  const [isFreezeActive, setIsFreezeActive] = useState<boolean>(false);
+  const [isTapeFreeze, setIsTapeFreeze] = useState<boolean>(false);
   const [showTimeline, setShowTimeline] = useState<boolean>(true);
   const [duration, setDuration] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -379,9 +378,9 @@ export const App: React.FC = () => {
     if (!videoRef.current) return;
     handleEnsureAudioWired();
 
-    if (isTapeStopped) {
-      // If tape was stopped, resume the tape motor smoothly
-      handleTapeStop();
+    if (isTapeFreeze) {
+      // If tape was stopped & frozen, resume the tape motor smoothly
+      handleToggleTapeFreeze();
       return;
     }
 
@@ -400,14 +399,14 @@ export const App: React.FC = () => {
   const handleNextTrack = () => {
     if (playlist.length === 0) return;
     const nextIdx = (currentIndex + 1) % playlist.length;
-    setIsTapeStopped(false);
+    setIsTapeFreeze(false);
     loadTrackAtIndex(nextIdx);
   };
 
   const handlePrevTrack = () => {
     if (playlist.length === 0) return;
     const prevIdx = (currentIndex - 1 + playlist.length) % playlist.length;
-    setIsTapeStopped(false);
+    setIsTapeFreeze(false);
     loadTrackAtIndex(prevIdx);
   };
 
@@ -421,28 +420,20 @@ export const App: React.FC = () => {
     });
   };
 
-  // Tape Stop Toggle: slows down to extreme drag on click 1, spins back up on click 2
-  // DOES NOT trigger the generic pause overlay, keeps video frame & shaders 100% active!
-  // Coordinated with Freeze: if Tape Stop engages, Freeze loop disengages cleanly!
-  const handleTapeStop = () => {
+  // Unified Tape Stop & Buffer Freeze:
+  // Decelerates playback motor with realistic tape inertia & locks the granular audio buffer and video frame
+  const handleToggleTapeFreeze = () => {
     if (!audioEngineRef.current) return;
     handleEnsureAudioWired();
 
-    audioEngineRef.current.toggleTapeStop(audioParams.tapeSpeed || 1.0, (stopped) => {
-      setIsTapeStopped(stopped);
-      if (stopped) setIsFreezeActive(false);
-    });
-  };
-
-  // Granular Stutter / Buffer Freeze: captures audio slice loop and locks video frame in WebGL
-  const handleToggleFreeze = () => {
-    if (!audioEngineRef.current) return;
-    handleEnsureAudioWired();
-
-    const nextState = audioEngineRef.current.toggleFreeze(audioParams.stutterSpeed || 0.12, (frozen) => {
-      setIsFreezeActive(frozen);
-    });
-    setIsFreezeActive(nextState);
+    const nextState = audioEngineRef.current.toggleTapeFreeze(
+      audioParams.tapeSpeed || 1.0,
+      audioParams.stutterSpeed || 0.12,
+      (active) => {
+        setIsTapeFreeze(active);
+      }
+    );
+    setIsTapeFreeze(nextState);
   };
 
   // Direct Session Video Recorder
@@ -758,15 +749,10 @@ export const App: React.FC = () => {
         e.preventDefault();
         handlePlayToggle();
       }
-      // T -> Tape Stop (inertia brake)
-      else if (key === 't') {
+      // T or F -> Unified Tape Stop & Buffer Freeze
+      else if (key === 't' || key === 'f') {
         e.preventDefault();
-        handleTapeStop();
-      }
-      // F -> Granular Buffer Freeze
-      else if (key === 'f') {
-        e.preventDefault();
-        handleToggleFreeze();
+        handleToggleTapeFreeze();
       }
       // R -> RANDOM musical macro
       else if (key === 'r') {
@@ -805,7 +791,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePlayToggle, handleTapeStop, handleToggleFreeze, handleRandomize, handleApplyPreset, handleTakeSnapshot]);
+  }, [handlePlayToggle, handleToggleTapeFreeze, handleRandomize, handleApplyPreset, handleTakeSnapshot]);
 
   const currentTrack = playlist[currentIndex];
 
@@ -846,14 +832,13 @@ export const App: React.FC = () => {
         videoElement={videoEl || videoRef.current}
         videoParams={videoParams}
         isPlaying={isPlaying}
-        isTapeStopped={isTapeStopped}
-        isFreezeActive={isFreezeActive}
+        isTapeFreeze={isTapeFreeze}
         audioEngine={audioEngineRef.current}
         showTimeline={showTimeline}
         onPlayToggle={handlePlayToggle}
         onNext={handleNextTrack}
         onPrev={handlePrevTrack}
-        onTapeStop={handleTapeStop}
+        onToggleTapeFreeze={handleToggleTapeFreeze}
         onCanvasReady={(c) => { canvasRef.current = c; }}
         title={currentTrack?.title || 'STANDBY - FEED READY'}
         duration={duration}
@@ -883,8 +868,7 @@ export const App: React.FC = () => {
           audioParams={audioParams}
           activePresetId={activePresetId}
           analyser={audioEngineRef.current ? audioEngineRef.current.getAnalyser() : null}
-          isTapeStopped={isTapeStopped}
-          isFreezeActive={isFreezeActive}
+          isTapeFreeze={isTapeFreeze}
           isRecording={isRecording}
           recordingDuration={recordingDuration}
           midiConnected={midiConnected}
@@ -894,7 +878,7 @@ export const App: React.FC = () => {
           lfoConfig={lfoConfig}
           onUpdateLfo={(partial) => setLfoConfig((prev) => ({ ...prev, ...partial }))}
           onToggleTimeline={() => setShowTimeline((prev) => !prev)}
-          onToggleFreeze={handleToggleFreeze}
+          onToggleTapeFreeze={handleToggleTapeFreeze}
           onToggleRecord={handleToggleRecord}
           onToggleZen={() => setIsZenMode((prev) => !prev)}
           onTakeSnapshot={handleTakeSnapshot}
@@ -912,7 +896,6 @@ export const App: React.FC = () => {
           }}
           onApplyPreset={handleApplyPreset}
           onRandomize={handleRandomize}
-          onTapeStop={handleTapeStop}
         />
       </div>
 
