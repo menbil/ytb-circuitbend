@@ -116,7 +116,7 @@ app.get('/api/debug-stream', async (req: Request, res: Response) => {
   const exe = await ytDlp.getExecutable();
   
   const { exec } = await import('child_process');
-  exec(`${exe} -f "18/b/best" --no-playlist -v -o - "${targetUrl}"`, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+  exec(`${exe} -f "18/b/best" --no-playlist --js-runtimes node --extractor-args "youtube:player_client=android" -v -o - "${targetUrl}"`, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
     res.json({
       exe,
       targetUrl,

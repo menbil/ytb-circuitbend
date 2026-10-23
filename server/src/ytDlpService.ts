@@ -63,6 +63,8 @@ export class YtDlpService {
         '-J',
         '--no-warnings',
         '--no-check-certificates',
+        '--js-runtimes',
+        'node',
         '--extractor-args',
         'youtube:player_client=android',
         url
@@ -174,6 +176,8 @@ export class YtDlpService {
       '--no-playlist',
       '--no-warnings',
       '--no-part',
+      '--js-runtimes',
+      'node',
       '--extractor-args',
       'youtube:player_client=android',
       '--buffer-size',
