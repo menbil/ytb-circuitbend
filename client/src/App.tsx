@@ -47,6 +47,7 @@ export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isConverting, setIsConverting] = useState<boolean>(false);
+  const pendingDownloadBlobRef = useRef<Blob | null>(null);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -553,51 +554,54 @@ export const App: React.FC = () => {
 
         recorder.onstop = async () => {
           const rawBlob = new Blob(recordedChunksRef.current, { type: mimeType });
+          pendingDownloadBlobRef.current = rawBlob;
+
+          const triggerDownload = (blob: Blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `circuitbend-social-export-${Date.now()}.mp4`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }, 200);
+          };
 
           // Send to server FFmpeg to enforce exact header duration, constant 60fps & mobile audio sync
           setIsConverting(true);
           try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
+
             const res = await fetch('/api/convert-mp4', {
               method: 'POST',
               headers: { 'Content-Type': 'application/octet-stream' },
-              body: rawBlob
+              body: rawBlob,
+              signal: controller.signal
             });
+            clearTimeout(timeoutId);
+
             if (res.ok) {
               const mp4Blob = await res.blob();
-              const url = URL.createObjectURL(mp4Blob);
-              const a = document.createElement('a');
-              a.style.display = 'none';
-              a.href = url;
-              a.download = `circuitbend-social-export-${Date.now()}.mp4`;
-              document.body.appendChild(a);
-              a.click();
-              setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-              }, 200);
+              triggerDownload(mp4Blob);
               setIsConverting(false);
+              pendingDownloadBlobRef.current = null;
               return;
             } else {
               const errJson = await res.json().catch(() => ({}));
               console.error('[MP4 Conversion Error]:', errJson);
             }
           } catch (e) {
-            console.error('[MP4 Server Conversion Fetch Error]:', e);
+            console.warn('[MP4 Server Conversion Warning - fallback to direct download]:', e);
           }
           setIsConverting(false);
 
-          // Fallback download if server conversion is unavailable
-          const fallbackUrl = URL.createObjectURL(rawBlob);
-          const a = document.createElement('a');
-          a.style.display = 'none';
-          a.href = fallbackUrl;
-          a.download = `circuitbend-social-export-${Date.now()}.mp4`;
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(fallbackUrl);
-          }, 200);
+          // Fallback direct download if server conversion fails or times out
+          triggerDownload(rawBlob);
+          pendingDownloadBlobRef.current = null;
         };
 
         recorder.start(500);
@@ -1068,10 +1072,31 @@ export const App: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
           <div className="bg-[#12141a] border border-cyan-500/60 p-6 rounded-xl shadow-[0_0_30px_rgba(6,182,212,0.3)] max-w-sm text-center font-mono">
             <div className="w-10 h-10 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <div className="text-sm font-bold text-white mb-1">ENCODAGE MP4 H.264 // AAC</div>
-            <div className="text-xs text-neutral-400 leading-relaxed">
-              Conversion en format universel optimisé pour Instagram Reels, TikTok, YouTube Shorts & iPhone...
+            <div className="text-sm font-bold text-white mb-1">FINALISATION MP4 H.264 // AAC</div>
+            <div className="text-xs text-neutral-400 leading-relaxed mb-4">
+              Calibrage de la durée exacte, synchronisation audio et injection des métadonnées mobiles...
             </div>
+            <button
+              onClick={() => {
+                if (pendingDownloadBlobRef.current) {
+                  const url = URL.createObjectURL(pendingDownloadBlobRef.current);
+                  const a = document.createElement('a');
+                  a.style.display = 'none';
+                  a.href = url;
+                  a.download = `circuitbend-social-export-${Date.now()}.mp4`;
+                  document.body.appendChild(a);
+                  a.click();
+                  setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }, 200);
+                }
+                setIsConverting(false);
+              }}
+              className="px-3 py-1.5 text-[11px] font-bold rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-600 transition-colors"
+            >
+              Télécharger directement sans attendre
+            </button>
           </div>
         </div>
       )}

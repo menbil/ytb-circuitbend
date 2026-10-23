@@ -58,17 +58,18 @@ app.post('/api/convert-mp4', async (req: Request, res: Response) => {
     console.log(`[MP4 Export] Starting FFmpeg conversion for ${req.body.length} bytes...`);
 
     // High-Fidelity H.264 Main Profile + YUV420p + Studio 320k AAC + FastStart + Exact Duration CFR
-    // Enforces monotonic 60fps CFR and accurate header duration for social networks and mobile OS
+    // -preset ultrafast provides lightning-fast (1-3s) processing while CRF 18 preserves pristine scanlines and glitches
     const ffmpegArgs = [
       '-y',
+      '-nostdin',
       '-err_detect', 'ignore_err',
       '-fflags', '+genpts+discardcorrupt',
       '-avoid_negative_ts', 'make_zero',
       '-i', inputPath,
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
-      '-preset', 'medium',
-      '-crf', '17',
+      '-preset', 'ultrafast',
+      '-crf', '18',
       '-r', '60',
       '-fps_mode', 'cfr',
       '-maxrate', '18M',
@@ -80,7 +81,18 @@ app.post('/api/convert-mp4', async (req: Request, res: Response) => {
       outputPath
     ];
 
-    const proc = spawn('ffmpeg', ffmpegArgs);
+    const proc = spawn('ffmpeg', ffmpegArgs, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
+    });
+
+    // 25-second watchdog timer to guarantee process never hangs
+    const watchdogTimer = setTimeout(() => {
+      console.warn('[MP4 Export] FFmpeg conversion exceeded 25s, terminating process.');
+      try {
+        proc.kill('SIGKILL');
+      } catch {}
+    }, 25000);
 
     let stderr = '';
     proc.stderr.on('data', (d) => {
@@ -88,6 +100,7 @@ app.post('/api/convert-mp4', async (req: Request, res: Response) => {
     });
 
     proc.on('close', (code) => {
+      clearTimeout(watchdogTimer);
       // Clean input temp file
       fs.promises.unlink(inputPath).catch(() => {});
 
