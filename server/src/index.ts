@@ -3,6 +3,10 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import { YtDlpService } from './ytDlpService.js';
+
+dotenv.config();
+
 const clientDistPath = path.resolve(process.cwd(), 'client/dist');
 const hasClientDist = fs.existsSync(clientDistPath) && fs.existsSync(path.join(clientDistPath, 'index.html'));
 
@@ -167,14 +171,14 @@ app.get('/api/stream', (req: Request, res: Response) => {
 
   streamProcess.stdout.pipe(res);
 
-  streamProcess.stderr.on('data', (data) => {
+  streamProcess.stderr.on('data', (data: any) => {
     const msg = data.toString();
     if (msg.includes('ERROR:')) {
       console.error(`[yt-dlp stream error]: ${msg}`);
     }
   });
 
-  streamProcess.on('error', (err) => {
+  streamProcess.on('error', (err: any) => {
     console.error('[Stream Process Error]:', err);
     if (!res.headersSent) {
       res.status(500).send('Stream process encountered an error.');
