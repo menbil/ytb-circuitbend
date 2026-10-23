@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { YtDlpService } from './ytDlpService.js';
 
@@ -33,6 +35,83 @@ app.use(cors({
 }));
 
 app.use(express.json());
+// Raw binary body parser for media recording conversion (up to 300MB)
+app.use('/api/convert-mp4', express.raw({ type: () => true, limit: '300mb' }));
+
+/**
+ * POST /api/convert-mp4
+ * Converts recorded browser streams (WebM / VP8 / VP9 / Opus) to universal MP4 (H.264 / AAC)
+ * fully compatible with Instagram, TikTok, YouTube Shorts, Twitter/X, and Apple iOS.
+ */
+app.post('/api/convert-mp4', async (req: Request, res: Response) => {
+  if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+    return res.status(400).json({ error: 'Fichier vidéo binaire vide ou invalide.' });
+  }
+
+  const tempId = `cb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const inputPath = path.join(os.tmpdir(), `${tempId}.webm`);
+  const outputPath = path.join(os.tmpdir(), `${tempId}.mp4`);
+
+  try {
+    await fs.promises.writeFile(inputPath, req.body);
+
+    console.log(`[MP4 Export] Starting FFmpeg conversion for ${req.body.length} bytes...`);
+
+    // H.264 Main Profile + YUV420p + AAC stereo + FastStart for instant playback on social networks
+    const ffmpegArgs = [
+      '-y',
+      '-i', inputPath,
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-preset', 'fast',
+      '-crf', '21',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-movflags', '+faststart',
+      outputPath
+    ];
+
+    const proc = spawn('ffmpeg', ffmpegArgs);
+
+    let stderr = '';
+    proc.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
+
+    proc.on('close', (code) => {
+      // Clean input temp file
+      fs.promises.unlink(inputPath).catch(() => {});
+
+      if (code !== 0 || !fs.existsSync(outputPath)) {
+        console.error('[FFmpeg Error]:', stderr);
+        fs.promises.unlink(outputPath).catch(() => {});
+        return res.status(500).json({ error: 'Échec de conversion FFmpeg vers MP4.', details: stderr });
+      }
+
+      console.log(`[MP4 Export] Conversion success! Delivering ${outputPath}`);
+
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename="circuitbend-${Date.now()}.mp4"`);
+
+      const readStream = fs.createReadStream(outputPath);
+      readStream.pipe(res);
+      readStream.on('close', () => {
+        fs.promises.unlink(outputPath).catch(() => {});
+      });
+    });
+
+    proc.on('error', (err) => {
+      console.error('[FFmpeg Process Error]:', err);
+      fs.promises.unlink(inputPath).catch(() => {});
+      fs.promises.unlink(outputPath).catch(() => {});
+      res.status(500).json({ error: 'FFmpeg introuvable ou erreur processus.', details: err.message });
+    });
+  } catch (err: any) {
+    fs.promises.unlink(inputPath).catch(() => {});
+    fs.promises.unlink(outputPath).catch(() => {});
+    res.status(500).json({ error: 'Erreur écriture fichier temporaire.', details: err.message });
+  }
+});
 
 // Serve React static build in production if available
 if (hasClientDist) {

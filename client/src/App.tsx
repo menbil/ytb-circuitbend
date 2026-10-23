@@ -46,6 +46,7 @@ export const App: React.FC = () => {
   // Direct Recording & Web MIDI State
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [isConverting, setIsConverting] = useState<boolean>(false);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -53,6 +54,8 @@ export const App: React.FC = () => {
 
   const [midiConnected, setMidiConnected] = useState<boolean>(false);
   const [midiDeviceName, setMidiDeviceName] = useState<string | null>(null);
+  const [midiToast, setMidiToast] = useState<{ message: string; sub?: string } | null>(null);
+  const midiToastTimerRef = useRef<any>(null);
   const midiEngineRef = useRef<MidiEngine | null>(null);
   const [isMidiModalOpen, setIsMidiModalOpen] = useState<boolean>(false);
   const actionHandlersRef = useRef<{
@@ -253,6 +256,22 @@ export const App: React.FC = () => {
     engine.onStateChange((connected, name) => {
       setMidiConnected(connected);
       setMidiDeviceName(name);
+    });
+
+    engine.onActivity((ev) => {
+      if (ev.type === 'noteOn' || (ev.type === 'cc' && ev.value > 0)) {
+        const actionLabel = ev.targetMapped 
+          ? ev.targetMapped.replace('action.', '').replace('video.', 'Vidéo: ').replace('audio.', 'Audio: ') 
+          : null;
+        setMidiToast({
+          message: actionLabel 
+            ? `🎛️ MIDI : ${actionLabel.toUpperCase()}` 
+            : `🎛️ Signal MIDI : ${ev.type.toUpperCase()} #${ev.paramNumber}`,
+          sub: ev.targetMapped ? `Déclenché via Pad/Bouton #${ev.paramNumber}` : `Valeur: ${ev.value} (Ouvrez le menu MIDI pour assigner)`
+        });
+        if (midiToastTimerRef.current) clearTimeout(midiToastTimerRef.current);
+        midiToastTimerRef.current = setTimeout(() => setMidiToast(null), 2500);
+      }
     });
 
     engine.init((target: MidiTarget, normalized: number, isTrigger: boolean) => {
@@ -517,18 +536,47 @@ export const App: React.FC = () => {
           }
         };
 
-        recorder.onstop = () => {
-          const blob = new Blob(recordedChunksRef.current, { type: mimeType });
-          const url = URL.createObjectURL(blob);
+        recorder.onstop = async () => {
+          const rawBlob = new Blob(recordedChunksRef.current, { type: mimeType });
+          setIsConverting(true);
+          try {
+            // Attempt high-compatibility MP4 conversion via FFmpeg server route
+            const res = await fetch('/api/convert-mp4', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/octet-stream' },
+              body: rawBlob
+            });
+            if (res.ok) {
+              const mp4Blob = await res.blob();
+              const url = URL.createObjectURL(mp4Blob);
+              const a = document.createElement('a');
+              a.style.display = 'none';
+              a.href = url;
+              a.download = `circuitbend-social-export-${Date.now()}.mp4`;
+              document.body.appendChild(a);
+              a.click();
+              setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }, 200);
+              setIsConverting(false);
+              return;
+            }
+          } catch (e) {
+            console.warn('[MP4 Server Conversion Warning - Fallback to direct download]:', e);
+          }
+          setIsConverting(false);
+          // Fallback direct download if server is offline or fails
+          const fallbackUrl = URL.createObjectURL(rawBlob);
           const a = document.createElement('a');
           a.style.display = 'none';
-          a.href = url;
-          a.download = `vaporwave-circuitbend-${Date.now()}.webm`;
+          a.href = fallbackUrl;
+          a.download = `circuitbend-export-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
           document.body.appendChild(a);
           a.click();
           setTimeout(() => {
             document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            URL.revokeObjectURL(fallbackUrl);
           }, 200);
         };
 
@@ -981,6 +1029,30 @@ export const App: React.FC = () => {
           <Minimize2 size={12} className="text-amber-400 group-hover:scale-110 transition-transform" />
           <span>QUITTER MODE ZEN (Z / ÉCHAP)</span>
         </button>
+      )}
+
+      {/* Live MIDI Feedback Toast */}
+      {midiToast && (
+        <div className="fixed bottom-14 right-6 z-50 px-4 py-2.5 rounded-lg bg-[#111318]/95 border border-cyan-500/80 shadow-[0_0_20px_rgba(6,182,212,0.4)] backdrop-blur-md animate-in slide-in-from-bottom-2 fade-in duration-150 flex items-center gap-3 font-mono">
+          <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+          <div>
+            <div className="text-xs font-bold text-cyan-300">{midiToast.message}</div>
+            {midiToast.sub && <div className="text-[10px] text-neutral-400">{midiToast.sub}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* MP4 Social Export Processing Modal / Toast */}
+      {isConverting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#12141a] border border-cyan-500/60 p-6 rounded-xl shadow-[0_0_30px_rgba(6,182,212,0.3)] max-w-sm text-center font-mono">
+            <div className="w-10 h-10 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <div className="text-sm font-bold text-white mb-1">ENCODAGE MP4 H.264 // AAC</div>
+            <div className="text-xs text-neutral-400 leading-relaxed">
+              Conversion en format universel optimisé pour Instagram Reels, TikTok, YouTube Shorts & iPhone...
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Snapshot Shutter White Flash */}
