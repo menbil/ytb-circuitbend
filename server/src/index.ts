@@ -160,7 +160,7 @@ app.get('/api/stream', (req: Request, res: Response) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
-  res.setHeader('Content-Type', 'video/webm');
+  res.setHeader('Content-Type', 'video/mp4');
   res.setHeader('Accept-Ranges', 'none');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Connection', 'keep-alive');

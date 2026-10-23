@@ -64,7 +64,7 @@ export class YtDlpService {
         '--no-warnings',
         '--no-check-certificates',
         '--extractor-args',
-        'youtube:player_client=android,web',
+        'youtube:player_client=android',
         url
       ];
 
@@ -166,16 +166,16 @@ export class YtDlpService {
       ? idOrUrl 
       : `https://www.youtube.com/watch?v=${idOrUrl}`;
 
-    // Format: VP9 / AV1 / WebM video combined with Opus audio in true WebM container
-    // extractor-args android,web bypasses cloud IP bot-detection block on Render / AWS
+    // Format: Progressive muxed mp4 stream (format 18 / best) directly playable by Chromium video element
+    // extractor-args android strictly bypasses cloud IP bot-detection block on Render / AWS
     const baseArgs = [
       '-f',
-      'bv*[vcodec^=vp9][height<=720]+ba[acodec=opus]/bv*[vcodec^=vp9]+ba[acodec=opus]/bv*[vcodec^=av01]+ba[acodec=opus]/bv*[ext=webm]+ba[ext=webm]/bv*[height<=720]+ba/best',
+      '18/b/best[height<=720]/best',
       '--no-playlist',
       '--no-warnings',
       '--no-part',
       '--extractor-args',
-      'youtube:player_client=android,web',
+      'youtube:player_client=android',
       '--buffer-size',
       '16K',
       '-o',
