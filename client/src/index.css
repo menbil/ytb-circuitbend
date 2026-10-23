@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    background-color: #000;
+    color: #cbd5e1;
+    font-family: 'JetBrains Mono', monospace;
+    user-select: none;
+  }
+}
+
+/* Custom scrollbar for playlist */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 17, 21, 0.4);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2f3a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #ff9d00;
+}
+
+/* CRT screen flicker */
+@keyframes crt-flicker {
+  0% { opacity: 0.992; }
+  50% { opacity: 1; }
+  100% { opacity: 0.988; }
+}
+
+.crt-screen {
+  animation: crt-flicker 0.15s infinite;
+}
