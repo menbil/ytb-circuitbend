@@ -93,7 +93,7 @@ export class YtDlpService {
         try {
           const jsonStartIndex = stdout.indexOf('{');
           if (jsonStartIndex === -1) {
-            throw new Error('No JSON output from yt-dlp');
+            throw new Error(`No JSON output from yt-dlp. ExitCode: ${code}. Stderr: ${stderr.trim() || 'none'}. Stdout: ${stdout.trim() || 'none'}`);
           }
           const jsonStr = stdout.slice(jsonStartIndex);
           const data = JSON.parse(jsonStr);
