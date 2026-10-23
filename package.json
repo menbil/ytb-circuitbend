@@ -3,18 +3,22 @@
   "version": "1.0.0",
   "description": "Real-time Audio & Video Circuit Bending Studio for YouTube Streams",
   "private": true,
+  "packageManager": "yarn@1.22.22",
   "workspaces": [
     "server",
     "client"
   ],
   "scripts": {
-    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "npm --prefix server run dev",
-    "dev:client": "npm --prefix client run dev",
-    "build:server": "npm --prefix server run build",
-    "build:client": "npm --prefix client run build",
-    "build": "npm run build:server && npm run build:client",
-    "start": "npm --prefix server run start"
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"yarn dev:server\" \"yarn dev:client\"",
+    "dev:server": "yarn --cwd server dev",
+    "dev:client": "yarn --cwd client dev",
+    "build:server": "yarn --cwd server build",
+    "build:client": "yarn --cwd client build",
+    "build": "yarn build:server && yarn build:client",
+    "start": "yarn --cwd server start",
+    "test": "yarn test:server && yarn test:client",
+    "test:server": "yarn --cwd server test",
+    "test:client": "yarn --cwd client test"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

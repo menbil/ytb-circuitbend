@@ -1,4 +1,5 @@
 import { AudioBendingParams } from '../types/index.js';
+import { computeBitcrushCurve, computeDriveCurve } from './dspUtils.js';
 
 export class AudioCircuitEngine {
   private ctx: AudioContext | null = null;
@@ -475,23 +476,7 @@ export class AudioCircuitEngine {
 
   private updateBitcrushCurve(amount: number) {
     if (!this.bitcrusherNode) return;
-    if (amount <= 0.01) {
-      const samples = 1024;
-      const curve = new Float32Array(samples);
-      for (let i = 0; i < samples; i++) curve[i] = (i / (samples - 1)) * 2 - 1;
-      this.bitcrusherNode.curve = curve;
-      return;
-    }
-    const samples = 2048;
-    const curve = new Float32Array(samples);
-    const steps = Math.max(3, Math.round(128 * Math.pow(1 - amount * 0.96, 2.5)));
-    for (let i = 0; i < samples; i++) {
-      const x = (i / (samples - 1)) * 2 - 1;
-      let y = Math.round(x * steps) / steps;
-      if (amount > 0.5 && y > 0.4) y = Math.min(1.0, y * (1.0 + (amount - 0.5) * 0.4));
-      curve[i] = y;
-    }
-    this.bitcrusherNode.curve = curve;
+    this.bitcrusherNode.curve = computeBitcrushCurve(amount);
   }
 
   /**
@@ -500,28 +485,7 @@ export class AudioCircuitEngine {
    */
   private updateDriveCurve(amount: number) {
     if (!this.driveNode) return;
-
-    if (amount <= 0.01) {
-      const samples = 1024;
-      const curve = new Float32Array(samples);
-      for (let i = 0; i < samples; i++) curve[i] = (i / (samples - 1)) * 2 - 1;
-      this.driveNode.curve = curve;
-      return;
-    }
-
-    const samples = 2048;
-    const curve = new Float32Array(samples);
-    // Smooth analog drive factor: scales gently from 1.0 to 4.5
-    const driveFactor = 1.0 + amount * 3.8;
-    const norm = Math.tanh(driveFactor); // Gain normalization factor
-
-    for (let i = 0; i < samples; i++) {
-      const x = (i / (samples - 1)) * 2 - 1;
-      // Soft hyperbolic tangent tape/tube saturation, perfectly normalized to [-1, +1]
-      const y = Math.tanh(x * driveFactor) / norm;
-      curve[i] = y;
-    }
-    this.driveNode.curve = curve;
+    this.driveNode.curve = computeDriveCurve(amount);
   }
 
   public updateParams(params: AudioBendingParams) {
