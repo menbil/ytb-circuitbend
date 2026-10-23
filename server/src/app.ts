@@ -60,6 +60,8 @@ app.post('/api/convert-mp4', async (req: Request, res: Response) => {
     // H.264 Main Profile + YUV420p + AAC stereo + FastStart for instant playback on social networks
     const ffmpegArgs = [
       '-y',
+      '-err_detect', 'ignore_err',
+      '-fflags', '+genpts+discardcorrupt',
       '-i', inputPath,
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',

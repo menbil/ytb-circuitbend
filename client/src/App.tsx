@@ -517,12 +517,23 @@ export const App: React.FC = () => {
         ];
         const combinedStream = new MediaStream(tracks);
 
-        let mimeType = 'video/webm;codecs=vp9,opus';
+        // Prefer native MP4 container if browser supports it
+        const candidateMimeTypes = [
+          'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+          'video/mp4;codecs=avc1,mp4a.40.2',
+          'video/mp4;codecs=avc1',
+          'video/mp4',
+          'video/webm;codecs=h264,opus',
+          'video/webm;codecs=vp9,opus',
+          'video/webm;codecs=vp8,opus',
+          'video/webm'
+        ];
+        let mimeType = 'video/webm';
         if (typeof MediaRecorder !== 'undefined') {
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'video/webm;codecs=vp8,opus';
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-              mimeType = 'video/webm';
+          for (const candidate of candidateMimeTypes) {
+            if (MediaRecorder.isTypeSupported(candidate)) {
+              mimeType = candidate;
+              break;
             }
           }
         }
@@ -538,9 +549,26 @@ export const App: React.FC = () => {
 
         recorder.onstop = async () => {
           const rawBlob = new Blob(recordedChunksRef.current, { type: mimeType });
+
+          // If browser natively captured MP4, download directly as .mp4
+          if (mimeType.includes('mp4')) {
+            const url = URL.createObjectURL(rawBlob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `circuitbend-social-export-${Date.now()}.mp4`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }, 200);
+            return;
+          }
+
+          // Otherwise (recorded as WebM), convert via server FFmpeg for 100% social network compatibility
           setIsConverting(true);
           try {
-            // Attempt high-compatibility MP4 conversion via FFmpeg server route
             const res = await fetch('/api/convert-mp4', {
               method: 'POST',
               headers: { 'Content-Type': 'application/octet-stream' },
@@ -561,17 +589,21 @@ export const App: React.FC = () => {
               }, 200);
               setIsConverting(false);
               return;
+            } else {
+              const errJson = await res.json().catch(() => ({}));
+              console.error('[MP4 Conversion Error]:', errJson);
             }
           } catch (e) {
-            console.warn('[MP4 Server Conversion Warning - Fallback to direct download]:', e);
+            console.error('[MP4 Server Conversion Fetch Error]:', e);
           }
           setIsConverting(false);
-          // Fallback direct download if server is offline or fails
+
+          // Fallback download with .mp4 extension
           const fallbackUrl = URL.createObjectURL(rawBlob);
           const a = document.createElement('a');
           a.style.display = 'none';
           a.href = fallbackUrl;
-          a.download = `circuitbend-export-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+          a.download = `circuitbend-social-export-${Date.now()}.mp4`;
           document.body.appendChild(a);
           a.click();
           setTimeout(() => {
