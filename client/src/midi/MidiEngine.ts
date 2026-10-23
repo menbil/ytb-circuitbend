@@ -36,86 +36,105 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     47: 'audio.flutterDepth',
     48: 'audio.reverbWet',
 
-    // CC Mode for Pads (CC 73 to 80, CC 114 to 121, CC 49 to 56)
-    73: 'action.playToggle',
-    74: 'action.tapeFreeze', // Pad 2
-    75: 'action.randomize',
-    76: 'action.nextTrack',
-    77: 'action.preset0',
-    78: 'action.preset1',
-    79: 'action.preset2',
-    80: 'action.preset3',
+    // CC Mode for Pads (CC 73 to 80, CC 114 to 121)
+    73: 'action.playToggle', // Pad 1
+    74: 'action.tapeFreeze', // Pad 2 (Tape Stop & Buffer Freeze)
+    75: 'action.randomize',  // Pad 3
+    76: 'action.nextTrack',  // Pad 4
+    77: 'action.preset0',    // Pad 5
+    78: 'action.preset1',    // Pad 6
+    79: 'action.preset2',    // Pad 7
+    80: 'action.preset3',    // Pad 8
 
-    // Alternate CC numbers for Launch Control / Ableton templates
-    114: 'action.playToggle',
+    // Alternate CC numbers for Launch Control / Ableton templates (CC 114 to 121)
+    114: 'action.playToggle', // Pad 1
     115: 'action.tapeFreeze', // Pad 2
-    116: 'action.randomize',
-    117: 'action.nextTrack',
-
-    // Launch Control XL Track Focus / Control
-    51: 'action.playToggle',
-    52: 'action.tapeFreeze', // Pad 2
-    49: 'action.playToggle',
-    50: 'action.tapeFreeze'  // Pad 2
+    116: 'action.randomize',  // Pad 3
+    117: 'action.nextTrack',  // Pad 4
+    118: 'action.preset0',    // Pad 5
+    119: 'action.preset1',    // Pad 6
+    120: 'action.preset2',    // Pad 7
+    121: 'action.preset3'     // Pad 8
   },
   noteMap: {
     // Factory Template 1: Pads 1-4 (9..12) & Pads 5-8 (25..28)
-    9: 'action.playToggle',
-    10: 'action.tapeFreeze', // Pad 2
-    11: 'action.randomize',
-    12: 'action.nextTrack',
-    25: 'action.preset0',
-    26: 'action.preset1',
-    27: 'action.preset2',
-    28: 'action.preset3',
+    9: 'action.playToggle',  // Pad 1
+    10: 'action.tapeFreeze', // Pad 2 (Tape Stop & Buffer Freeze)
+    11: 'action.randomize',  // Pad 3
+    12: 'action.nextTrack',  // Pad 4
+    25: 'action.preset0',    // Pad 5
+    26: 'action.preset1',    // Pad 6
+    27: 'action.preset2',    // Pad 7
+    28: 'action.preset3',    // Pad 8
 
-    // Factory Template 2: Pads 1-4 (13..16)
-    13: 'action.playToggle',
+    // Factory Template 2: Pads 1-4 (13..16) & Pads 5-8 (29..32)
+    13: 'action.playToggle', // Pad 1
     14: 'action.tapeFreeze', // Pad 2
-    15: 'action.randomize',
-    16: 'action.nextTrack',
+    15: 'action.randomize',  // Pad 3
+    16: 'action.nextTrack',  // Pad 4
+    29: 'action.preset0',    // Pad 5
+    30: 'action.preset1',    // Pad 6
+    31: 'action.preset2',    // Pad 7
+    32: 'action.preset3',    // Pad 8
 
-    // Factory Template 3: Pads 1-4 (17..20)
-    17: 'action.playToggle',
+    // Factory Template 3: Pads 1-4 (17..20) & Pads 5-8 (33..36)
+    17: 'action.playToggle', // Pad 1
     18: 'action.tapeFreeze', // Pad 2
-    19: 'action.randomize',
-    20: 'action.nextTrack',
+    19: 'action.randomize',  // Pad 3
+    20: 'action.nextTrack',  // Pad 4
+    33: 'action.preset0',    // Pad 5
+    34: 'action.preset1',    // Pad 6
+    35: 'action.preset2',    // Pad 7
 
     // Factory Template 4: Pads 1-4 (21..24)
-    21: 'action.playToggle',
+    21: 'action.playToggle', // Pad 1
     22: 'action.tapeFreeze', // Pad 2
-    23: 'action.randomize',
-    24: 'action.nextTrack',
+    23: 'action.randomize',  // Pad 3
+    24: 'action.nextTrack',  // Pad 4
 
-    // Standard Octaves (C1..C4 chromatic drum pads)
-    36: 'action.playToggle',
-    37: 'action.tapeFreeze', // Pad 2
-    38: 'action.randomize',
-    39: 'action.nextTrack',
+    // User Template 1: Standard Drum Octave 1 (C1..G1, Notes 36..43)
+    36: 'action.playToggle', // Pad 1 (C1)
+    37: 'action.tapeFreeze', // Pad 2 (C#1 - Tape Stop & Buffer Freeze)
+    38: 'action.randomize',  // Pad 3 (D1)
+    39: 'action.nextTrack',  // Pad 4 (D#1)
+    40: 'action.preset0',    // Pad 5 (E1)
+    41: 'action.preset1',    // Pad 6 (F1)
+    42: 'action.preset2',    // Pad 7 (F#1)
+    43: 'action.preset3',    // Pad 8 (G1)
 
-    40: 'action.playToggle',
-    41: 'action.tapeFreeze', // Pad 2
-    42: 'action.randomize',
-    43: 'action.nextTrack',
+    // User Template 2: Standard Drum Octave 2 (C2..G2, Notes 48..55)
+    48: 'action.playToggle', // Pad 1 (C2)
+    49: 'action.tapeFreeze', // Pad 2 (C#2)
+    50: 'action.randomize',  // Pad 3 (D2)
+    51: 'action.nextTrack',  // Pad 4 (D#2)
+    52: 'action.preset0',    // Pad 5 (E2)
+    53: 'action.preset1',    // Pad 6 (F2)
+    54: 'action.preset2',    // Pad 7 (F#2)
+    55: 'action.preset3',    // Pad 8 (G2)
 
-    48: 'action.playToggle',
-    49: 'action.tapeFreeze', // Pad 2
-    50: 'action.randomize',
-    51: 'action.nextTrack',
+    // User Template 3: Standard Drum Octave 3 (C3..G3, Notes 60..67)
+    60: 'action.playToggle', // Pad 1 (C3)
+    61: 'action.tapeFreeze', // Pad 2 (C#3)
+    62: 'action.randomize',  // Pad 3 (D3)
+    63: 'action.nextTrack',  // Pad 4 (D#3)
+    64: 'action.preset0',    // Pad 5 (E3)
+    65: 'action.preset1',    // Pad 6 (F3)
+    66: 'action.preset2',    // Pad 7 (F#3)
+    67: 'action.preset3',    // Pad 8 (G3)
 
-    60: 'action.playToggle',
-    61: 'action.tapeFreeze', // Pad 2
-    62: 'action.randomize',
-    63: 'action.nextTrack',
-
-    72: 'action.playToggle',
-    73: 'action.tapeFreeze', // Pad 2
-    74: 'action.tapeFreeze', // LC XL Button 2
-    75: 'action.randomize',
+    // User Template 4: Standard Drum Octave 4 (C4..G4, Notes 72..79)
+    72: 'action.playToggle', // Pad 1 (C4)
+    73: 'action.tapeFreeze', // Pad 2 (C#4)
+    74: 'action.randomize',  // Pad 3 (D4)
+    75: 'action.nextTrack',  // Pad 4 (D#4)
+    76: 'action.preset0',    // Pad 5 (E4)
+    77: 'action.preset1',    // Pad 6 (F4)
+    78: 'action.preset2',    // Pad 7 (F#4)
+    79: 'action.preset3',    // Pad 8 (G4)
 
     // Generic pads 0 & 1
-    0: 'action.playToggle',
-    1: 'action.tapeFreeze'   // Pad 2
+    0: 'action.playToggle',  // Pad 1
+    1: 'action.tapeFreeze'   // Pad 2 (Tape Stop & Buffer Freeze)
   }
 };
 
@@ -208,7 +227,7 @@ export const GENERIC_PROFILE: MidiProfile = {
   }
 };
 
-const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v2';
+const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v3';
 
 export type MidiDispatchFn = (target: MidiTarget, normalizedValue: number, isTrigger: boolean) => void;
 

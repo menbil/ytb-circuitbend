@@ -1,6 +1,7 @@
 {
   "name": "ytb-circuitbend-server",
   "version": "1.0.0",
+  "type": "module",
   "description": "Backend proxy and playlist parser using yt-dlp for Circuit Bending Studio",
   "main": "dist/index.js",
   "scripts": {

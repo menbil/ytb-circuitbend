@@ -130,6 +130,39 @@ describe('Web MIDI Engine & Novation Launch Control Mapping', () => {
     assert.strictEqual(triggerCount, 3);
   });
 
+  it('Pad 1 (playToggle) and Pad 2 (tapeFreeze) are completely separated without conflict', () => {
+    const engine = new MidiEngine();
+    const history: Array<{ target: string; isTrigger: boolean }> = [];
+
+    engine.init((target, _val, isTrigger) => {
+      history.push({ target, isTrigger });
+    });
+
+    // Pad 1 press (CC 73)
+    (engine as any).handleMidiMessage({ data: new Uint8Array([0xb0, 73, 127]) }, 'Launch Control');
+    assert.strictEqual(history[history.length - 1].target, 'action.playToggle');
+    assert.strictEqual(history[history.length - 1].isTrigger, true);
+
+    // Pad 2 press (CC 74)
+    (engine as any).handleMidiMessage({ data: new Uint8Array([0xb0, 74, 127]) }, 'Launch Control');
+    assert.strictEqual(history[history.length - 1].target, 'action.tapeFreeze');
+    assert.strictEqual(history[history.length - 1].isTrigger, true);
+
+    // Pad 1 press Note (User Template 1: Note 36)
+    (engine as any).handleMidiMessage({ data: new Uint8Array([0x90, 36, 127]) }, 'Launch Control');
+    assert.strictEqual(history[history.length - 1].target, 'action.playToggle');
+
+    // Pad 2 press Note (User Template 1: Note 37)
+    (engine as any).handleMidiMessage({ data: new Uint8Array([0x90, 37, 127]) }, 'Launch Control');
+    assert.strictEqual(history[history.length - 1].target, 'action.tapeFreeze');
+
+    // Factory Template 1: Note 9 (Pad 1) & Note 10 (Pad 2)
+    (engine as any).handleMidiMessage({ data: new Uint8Array([0x90, 9, 127]) }, 'Launch Control');
+    assert.strictEqual(history[history.length - 1].target, 'action.playToggle');
+    (engine as any).handleMidiMessage({ data: new Uint8Array([0x90, 10, 127]) }, 'Launch Control');
+    assert.strictEqual(history[history.length - 1].target, 'action.tapeFreeze');
+  });
+
   it('MidiEngine MIDI Learn mode dynamically re-binds CC and persists', () => {
     const engine = new MidiEngine();
     let dispatchedTarget = '';

@@ -408,12 +408,6 @@ export const App: React.FC = () => {
     if (!videoRef.current) return;
     handleEnsureAudioWired();
 
-    if (isTapeFreeze) {
-      // If tape was stopped & frozen, resume the tape motor smoothly
-      handleToggleTapeFreeze();
-      return;
-    }
-
     if (isPlaying) {
       videoRef.current.pause();
       setIsPlaying(false);
