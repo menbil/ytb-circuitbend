@@ -26,17 +26,37 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     27: 'video.vaporwaveTint',
     28: 'video.crtCurvature',
 
-    // Bottom Row (Knobs 9 to 16): Factory CC 41 to 48
-    41: 'audio.drive',
-    42: 'audio.bitcrush',
-    43: 'audio.filterCutoff',
-    44: 'audio.filterResonance',
-    45: 'audio.tapeSpeed',
-    46: 'audio.wowDepth',
-    47: 'audio.flutterDepth',
-    48: 'audio.reverbWet',
+    // Bottom Row (Knobs 9 to 16): Factory Send B CC 29 to 36 & Fallback 49 to 56
+    29: 'audio.drive',
+    30: 'audio.bitcrush',
+    31: 'audio.filterCutoff',
+    32: 'audio.filterResonance',
+    33: 'audio.tapeSpeed',
+    34: 'audio.wowDepth',
+    35: 'audio.flutterDepth',
+    36: 'audio.reverbWet',
 
-    // CC Mode for Pads (CC 73 to 80, CC 114 to 121, CC 9 to 16, CC 1 to 8)
+    // Alternate Knobs 9 to 16 CCs (CC 49 to 56)
+    49: 'audio.drive',
+    50: 'audio.bitcrush',
+    51: 'audio.filterCutoff',
+    52: 'audio.filterResonance',
+    53: 'audio.tapeSpeed',
+    54: 'audio.wowDepth',
+    55: 'audio.flutterDepth',
+    56: 'audio.reverbWet',
+
+    // CC Mode for Pads (Launch Control CC 41 to 48, CC 73 to 80, CC 114 to 121, CC 9 to 16, CC 1 to 8)
+    41: 'action.playToggle',   // Pad 1: Play / Pause
+    42: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
+    43: 'action.randomize',    // Pad 3: Randomize / Glitch Macro
+    44: 'action.resetClean',   // Pad 4: Reset Clean / Bypass All FX
+    45: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot
+    46: 'action.recordToggle', // Pad 6: Video Session Record
+    47: 'action.preset1',      // Pad 7: Preset Abandoned Mall
+    48: 'action.preset2',      // Pad 8: Preset Broken VHS
+
+    // Alternate CC numbers for Launch Control / Ableton templates (CC 73 to 80)
     73: 'action.playToggle',   // Pad 1: Play / Pause
     74: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
     75: 'action.randomize',    // Pad 3: Randomize / Glitch Macro
@@ -240,7 +260,7 @@ export const GENERIC_PROFILE: MidiProfile = {
   }
 };
 
-const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v5';
+const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v6';
 
 export type MidiDispatchFn = (target: MidiTarget, normalizedValue: number, isTrigger: boolean) => void;
 
