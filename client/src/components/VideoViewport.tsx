@@ -80,9 +80,13 @@ const CircuitScreen: React.FC<{
       shaderMaterial.needsUpdate = true;
     }
 
-    // Freeze: only update texture frames when freeze is NOT active
-    if (!isFreezeActive && texture) {
-      texture.needsUpdate = true;
+    // Freeze: only update texture frames when video is actually playing a new frame
+    if (texture) {
+      if (isFreezeActive) {
+        // Keep current frame frozen in VRAM
+      } else if (videoElement && videoElement.readyState >= 2 && !videoElement.paused) {
+        texture.needsUpdate = true;
+      }
     }
 
     u.uTime.value = state.clock.getElapsedTime();
@@ -199,11 +203,18 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
       onClick={handleScreenClick}
       className="absolute inset-0 w-full h-full bg-black flex items-center justify-center cursor-pointer select-none overflow-hidden"
     >
-      {/* 3D WebGL Canvas filling entire background */}
+      {/* 3D WebGL Canvas filling entire background (GPU-Optimized for Chrome & Discrete GPUs) */}
       <Canvas
         camera={{ position: [0, 0, 7.5], fov: 60 }}
         className="w-full h-full block"
-        gl={{ preserveDrawingBuffer: true, antialias: true, alpha: false }}
+        dpr={[1, 1.25]}
+        gl={{
+          preserveDrawingBuffer: true,
+          antialias: false,
+          alpha: false,
+          powerPreference: 'high-performance',
+          failIfMajorPerformanceCaveat: false
+        }}
         onCreated={({ gl }) => {
           if (onCanvasReady) onCanvasReady(gl.domElement);
         }}

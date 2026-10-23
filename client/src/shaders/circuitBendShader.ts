@@ -132,16 +132,19 @@ export const CircuitBendShader = {
 
       uv = clamp(uv, 0.001, 0.999);
 
-      // 5. RGB CHANNEL SPLIT / ABERRATION (uRgbShift)
+      // 5. RGB CHANNEL SPLIT / ABERRATION (uRgbShift) - Fast single tap when inactive
       float shiftAmount = (uRgbShift + uAudioBass * uAudioReact * 0.08) * 0.045;
-      vec2 rOffset = vec2(shiftAmount * cos(uTime * 2.0), shiftAmount * sin(uTime * 2.0));
-      vec2 bOffset = -rOffset * 1.15;
-
-      vec4 colR = texture2D(tDiffuse, clamp(uv + rOffset, 0.0, 1.0));
-      vec4 colG = texture2D(tDiffuse, clamp(uv, 0.0, 1.0));
-      vec4 colB = texture2D(tDiffuse, clamp(uv + bOffset, 0.0, 1.0));
-
-      vec4 baseColor = vec4(colR.r, colG.g, colB.b, 1.0);
+      vec4 baseColor;
+      if (shiftAmount > 0.0005) {
+        vec2 rOffset = vec2(shiftAmount * cos(uTime * 2.0), shiftAmount * sin(uTime * 2.0));
+        vec2 bOffset = -rOffset * 1.15;
+        vec4 colR = texture2D(tDiffuse, clamp(uv + rOffset, 0.0, 1.0));
+        vec4 colG = texture2D(tDiffuse, clamp(uv, 0.0, 1.0));
+        vec4 colB = texture2D(tDiffuse, clamp(uv + bOffset, 0.0, 1.0));
+        baseColor = vec4(colR.r, colG.g, colB.b, 1.0);
+      } else {
+        baseColor = texture2D(tDiffuse, clamp(uv, 0.0, 1.0));
+      }
 
       // 6. CAPACITOR OVERCHARGE FEEDBACK (uFeedback)
       if (uFeedback > 0.01) {
