@@ -427,8 +427,11 @@ export class AudioCircuitEngine {
     sliceDuration: number = 0.12,
     onStateChange?: (active: boolean) => void
   ): boolean {
-    if (!this.connectedElement) return false;
-    const media = this.connectedElement;
+    const media = this.connectedElement || (typeof document !== 'undefined' ? document.querySelector('video') : null);
+    if (!media) return false;
+    if (!this.connectedElement && media) {
+      this.connectedElement = media;
+    }
 
     // Clear any active deceleration / acceleration
     if (this.tapeInterval) {
@@ -466,6 +469,10 @@ export class AudioCircuitEngine {
       this.isFrozen = false;
       this.setFreeze(false);
       if (onStateChange) onStateChange(false);
+
+      if (media.paused) {
+        media.play().catch(() => {});
+      }
 
       let current = media.playbackRate || 0.06;
       this.tapeInterval = setInterval(() => {

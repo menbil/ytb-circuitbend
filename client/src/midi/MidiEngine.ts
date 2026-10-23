@@ -36,20 +36,32 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     47: 'audio.flutterDepth',
     48: 'audio.reverbWet',
 
-    // CC Mode for Pads (CC 73 to 80)
+    // CC Mode for Pads (CC 73 to 80, CC 114 to 121, CC 49 to 56)
     73: 'action.playToggle',
-    74: 'action.tapeFreeze',
+    74: 'action.tapeFreeze', // Pad 2
     75: 'action.randomize',
     76: 'action.nextTrack',
     77: 'action.preset0',
     78: 'action.preset1',
     79: 'action.preset2',
-    80: 'action.preset3'
+    80: 'action.preset3',
+
+    // Alternate CC numbers for Launch Control / Ableton templates
+    114: 'action.playToggle',
+    115: 'action.tapeFreeze', // Pad 2
+    116: 'action.randomize',
+    117: 'action.nextTrack',
+
+    // Launch Control XL Track Focus / Control
+    51: 'action.playToggle',
+    52: 'action.tapeFreeze', // Pad 2
+    49: 'action.playToggle',
+    50: 'action.tapeFreeze'  // Pad 2
   },
   noteMap: {
-    // Note Mode for Pads (Launch Control User & Factory templates: 9..12 & 25..28, or 36..43)
+    // Factory Template 1: Pads 1-4 (9..12) & Pads 5-8 (25..28)
     9: 'action.playToggle',
-    10: 'action.tapeFreeze',
+    10: 'action.tapeFreeze', // Pad 2
     11: 'action.randomize',
     12: 'action.nextTrack',
     25: 'action.preset0',
@@ -57,15 +69,53 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     27: 'action.preset2',
     28: 'action.preset3',
 
-    // Alternative standard octave 36..43
+    // Factory Template 2: Pads 1-4 (13..16)
+    13: 'action.playToggle',
+    14: 'action.tapeFreeze', // Pad 2
+    15: 'action.randomize',
+    16: 'action.nextTrack',
+
+    // Factory Template 3: Pads 1-4 (17..20)
+    17: 'action.playToggle',
+    18: 'action.tapeFreeze', // Pad 2
+    19: 'action.randomize',
+    20: 'action.nextTrack',
+
+    // Factory Template 4: Pads 1-4 (21..24)
+    21: 'action.playToggle',
+    22: 'action.tapeFreeze', // Pad 2
+    23: 'action.randomize',
+    24: 'action.nextTrack',
+
+    // Standard Octaves (C1..C4 chromatic drum pads)
     36: 'action.playToggle',
-    37: 'action.tapeFreeze',
+    37: 'action.tapeFreeze', // Pad 2
     38: 'action.randomize',
     39: 'action.nextTrack',
-    40: 'action.preset0',
-    41: 'action.preset1',
-    42: 'action.preset2',
-    43: 'action.preset3'
+
+    40: 'action.playToggle',
+    41: 'action.tapeFreeze', // Pad 2
+    42: 'action.randomize',
+    43: 'action.nextTrack',
+
+    48: 'action.playToggle',
+    49: 'action.tapeFreeze', // Pad 2
+    50: 'action.randomize',
+    51: 'action.nextTrack',
+
+    60: 'action.playToggle',
+    61: 'action.tapeFreeze', // Pad 2
+    62: 'action.randomize',
+    63: 'action.nextTrack',
+
+    72: 'action.playToggle',
+    73: 'action.tapeFreeze', // Pad 2
+    74: 'action.tapeFreeze', // LC XL Button 2
+    75: 'action.randomize',
+
+    // Generic pads 0 & 1
+    0: 'action.playToggle',
+    1: 'action.tapeFreeze'   // Pad 2
   }
 };
 
@@ -335,8 +385,9 @@ export class MidiEngine {
     );
 
     // 3. Dispatch to Audio / Video / Action State
+    const isTrigger = isNoteOn || (isCC && value >= 64);
     if (target && this.dispatchFn) {
-      this.dispatchFn(target, normalized, isNoteOn);
+      this.dispatchFn(target, normalized, isTrigger);
     }
 
     // 4. Notify UI activity listeners (LED indicators)

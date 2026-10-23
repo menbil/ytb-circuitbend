@@ -280,6 +280,7 @@ export const App: React.FC = () => {
       // 3. Action triggers (Pads / Buttons)
       else if (target.startsWith('action.') && isTrigger) {
         const h = actionHandlersRef.current;
+        console.log(`%c[MIDI ACTION TRIGGERED] -> ${target}`, 'background: #047857; color: #fff; font-weight: bold; padding: 2px 6px; border-radius: 4px;');
         if (target === 'action.playToggle' && h.playToggle) h.playToggle();
         else if (target === 'action.tapeFreeze' && h.tapeFreeze) h.tapeFreeze();
         else if (target === 'action.randomize' && h.randomize) h.randomize();
@@ -463,6 +464,13 @@ export const App: React.FC = () => {
       }
     );
     setIsTapeFreeze(nextState);
+
+    // If resuming from tape freeze, ensure video playback continues
+    if (!nextState && videoRef.current && videoRef.current.paused) {
+      videoRef.current.play().then(() => {
+        setIsPlaying(true);
+      }).catch(() => {});
+    }
   };
 
   // Direct Session Video Recorder

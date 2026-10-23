@@ -79,6 +79,57 @@ describe('Web MIDI Engine & Novation Launch Control Mapping', () => {
     assert.strictEqual(dispatchedVal, 1.0);
   });
 
+  it('MidiEngine triggers action.tapeFreeze on Pad 2 via Note or CC', () => {
+    const engine = new MidiEngine();
+    let actionTriggered = '';
+    let triggerCount = 0;
+
+    engine.init((target, _val, isTrigger) => {
+      if (isTrigger) {
+        actionTriggered = target;
+        triggerCount++;
+      }
+    });
+
+    // 1. Pad 2 via Factory Note 10 (velocity 127)
+    (engine as any).handleMidiMessage(
+      { data: new Uint8Array([0x90, 10, 127]) },
+      'Launch Control'
+    );
+    assert.strictEqual(actionTriggered, 'action.tapeFreeze');
+    assert.strictEqual(triggerCount, 1);
+
+    // Note Off (velocity 0) should NOT trigger
+    (engine as any).handleMidiMessage(
+      { data: new Uint8Array([0x90, 10, 0]) },
+      'Launch Control'
+    );
+    assert.strictEqual(triggerCount, 1);
+
+    // 2. Pad 2 via User Template Note 37
+    (engine as any).handleMidiMessage(
+      { data: new Uint8Array([0x90, 37, 100]) },
+      'Launch Control'
+    );
+    assert.strictEqual(actionTriggered, 'action.tapeFreeze');
+    assert.strictEqual(triggerCount, 2);
+
+    // 3. Pad 2 via CC Mode 74 (value 127 on press)
+    (engine as any).handleMidiMessage(
+      { data: new Uint8Array([0xb0, 74, 127]) },
+      'Launch Control'
+    );
+    assert.strictEqual(actionTriggered, 'action.tapeFreeze');
+    assert.strictEqual(triggerCount, 3);
+
+    // CC release (value 0) should NOT trigger
+    (engine as any).handleMidiMessage(
+      { data: new Uint8Array([0xb0, 74, 0]) },
+      'Launch Control'
+    );
+    assert.strictEqual(triggerCount, 3);
+  });
+
   it('MidiEngine MIDI Learn mode dynamically re-binds CC and persists', () => {
     const engine = new MidiEngine();
     let dispatchedTarget = '';
