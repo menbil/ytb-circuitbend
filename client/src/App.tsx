@@ -509,7 +509,7 @@ export const App: React.FC = () => {
         return;
       }
       try {
-        const videoStream = canvasRef.current.captureStream(30);
+        const videoStream = canvasRef.current.captureStream(60);
         const audioDest = audioEngineRef.current ? audioEngineRef.current.getMediaStreamDestination() : null;
         const tracks = [
           ...videoStream.getVideoTracks(),
@@ -538,7 +538,11 @@ export const App: React.FC = () => {
           }
         }
 
-        const recorder = new MediaRecorder(combinedStream, { mimeType });
+        const recorder = new MediaRecorder(combinedStream, {
+          mimeType,
+          videoBitsPerSecond: 16_000_000,
+          audioBitsPerSecond: 320_000
+        });
         recordedChunksRef.current = [];
 
         recorder.ondataavailable = (e) => {
@@ -935,6 +939,7 @@ export const App: React.FC = () => {
         }}
         crossOrigin="anonymous"
         playsInline
+        preload="auto"
         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', opacity: 0.001, zIndex: 0 }}
         onLoadedData={() => {
           if (videoRef.current) {

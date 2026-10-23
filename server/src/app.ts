@@ -57,7 +57,8 @@ app.post('/api/convert-mp4', async (req: Request, res: Response) => {
 
     console.log(`[MP4 Export] Starting FFmpeg conversion for ${req.body.length} bytes...`);
 
-    // H.264 Main Profile + YUV420p + AAC stereo + FastStart for instant playback on social networks
+    // High-Fidelity H.264 Main Profile + YUV420p + Studio 320k AAC + FastStart
+    // CRF 17 preserves crisp CRT scanlines, RGB aberration & micro-glitches without blocking artifacts
     const ffmpegArgs = [
       '-y',
       '-err_detect', 'ignore_err',
@@ -65,10 +66,12 @@ app.post('/api/convert-mp4', async (req: Request, res: Response) => {
       '-i', inputPath,
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
-      '-preset', 'fast',
-      '-crf', '21',
+      '-preset', 'medium',
+      '-crf', '17',
+      '-maxrate', '18M',
+      '-bufsize', '36M',
       '-c:a', 'aac',
-      '-b:a', '192k',
+      '-b:a', '320k',
       '-movflags', '+faststart',
       outputPath
     ];

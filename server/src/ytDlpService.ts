@@ -168,20 +168,27 @@ export class YtDlpService {
       ? idOrUrl 
       : `https://www.youtube.com/watch?v=${idOrUrl}`;
 
-    // Format: Progressive muxed mp4 stream (format 18 / best) directly playable by Chromium video element
-    // extractor-args android strictly bypasses cloud IP bot-detection block on Render / AWS
+    // Progressive muxed stream optimized with high-res buffer & chunked download to avoid YouTube throttling
     const baseArgs = [
       '-f',
-      '18/b/best[height<=720]/best',
+      'b[height<=1080][ext=mp4]/b[height<=720][ext=mp4]/18/best[height<=720]/best',
       '--no-playlist',
       '--no-warnings',
       '--no-part',
       '--js-runtimes',
       'node',
       '--extractor-args',
-      'youtube:player_client=android',
+      'youtube:player_client=android,web',
       '--buffer-size',
-      '16K',
+      '4M',
+      '--http-chunk-size',
+      '10M',
+      '--retries',
+      '10',
+      '--fragment-retries',
+      '10',
+      '--socket-timeout',
+      '30',
       '-o',
       '-',
       targetUrl
