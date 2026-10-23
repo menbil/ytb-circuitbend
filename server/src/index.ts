@@ -109,6 +109,24 @@ app.get('/api/health', async (_req: Request, res: Response) => {
   res.json({ status: 'ok', engine: 'ytb-circuitbend-backend', ytDlpCmd: exe });
 });
 
+// Diagnostic stream endpoint to capture exact yt-dlp stderr output on Render
+app.get('/api/debug-stream', async (req: Request, res: Response) => {
+  const videoId = (req.query.id as string) || '4RCrvRXUrs4';
+  const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const exe = await ytDlp.getExecutable();
+  
+  const { exec } = await import('child_process');
+  exec(`${exe} -f "18/b/best" --no-playlist -v -o - "${targetUrl}"`, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    res.json({
+      exe,
+      targetUrl,
+      error: err ? err.message : null,
+      stderr: stderr ? stderr.slice(0, 3000) : null,
+      stdoutBytes: stdout ? stdout.length : 0
+    });
+  });
+});
+
 /**
  * POST /api/playlist
  * Input: { url: string }
