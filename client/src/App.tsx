@@ -9,7 +9,14 @@ import {
   LfoShape, 
   LfoTargetId, 
   VideoParamKey, 
-  AudioParamKey 
+  AudioParamKey,
+  ModRouting,
+  ModSourceId,
+  ModTargetPath,
+  MsegPoint,
+  SerumLfoUnit,
+  BpmSyncDivision,
+  LiveInputSource
 } from './types/index.js';
 import { PRESETS } from './presets.js';
 import { AudioCircuitEngine } from './audio/AudioCircuitEngine.js';
@@ -20,25 +27,58 @@ import { Header } from './components/Header.js';
 import { VideoViewport } from './components/VideoViewport.js';
 import { PlaylistPanel } from './components/PlaylistPanel.js';
 import { RackControls } from './components/RackControls.js';
-import { Minimize2 } from 'lucide-react';
+import { getEffectiveLfoRateHz, SHAPE_POINTS } from './components/SerumModPanel.js';
+import { Minimize2, Upload } from 'lucide-react';
+
+// Parameter min/max bounds for Serum-style modulation scaling
+const PARAM_RANGES: Record<string, [number, number]> = {
+  'audio.filterCutoff': [80, 16000],
+  'audio.filterResonance': [0.2, 24.0],
+  'audio.tapeSpeed': [0.5, 1.1],
+  'audio.wowRate': [0.4, 2.5],
+  'audio.flutterRate': [5.0, 15.0],
+  'audio.stutterSpeed': [0.04, 0.40],
+  'audio.ringModFreq': [30, 1200]
+};
+
+const evalMsegPoints = (phase: number, points?: MsegPoint[]): number => {
+  if (!points || points.length < 2) return 0.5;
+  const p = ((phase % 1.0) + 1.0) % 1.0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (p >= a.x && p <= b.x) {
+      const span = Math.max(0.0001, b.x - a.x);
+      const t = (p - a.x) / span;
+      return a.y + (b.y - a.y) * t;
+    }
+  }
+  return points[points.length - 1].y;
+};
 
 export const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const audioEngineRef = useRef<AudioCircuitEngine | null>(null);
+  const liveMediaStreamRef = useRef<MediaStream | null>(null);
 
-  // Playlist State
+  // Playlist & Input Source State
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [playlistTitle, setPlaylistTitle] = useState<string>('VAPORWAVE QUEUE');
   const [isPlaylistOpen, setIsPlaylistOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveSource, setLiveSource] = useState<LiveInputSource>('youtube');
+  const [localMediaTitle, setLocalMediaTitle] = useState<string | null>(null);
+  const [isFileDragOver, setIsFileDragOver] = useState<boolean>(false);
 
-  // Playback State
+  // Playback & OSD State
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isTapeFreeze, setIsTapeFreeze] = useState<boolean>(false);
   const [showTimeline, setShowTimeline] = useState<boolean>(true);
+  const [isRackMinimized, setIsRackMinimized] = useState<boolean>(false);
+  const [showVcrOsd, setShowVcrOsd] = useState<boolean>(false);
   const [duration, setDuration] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [audioState, setAudioState] = useState<string>('uninitialized');
@@ -52,7 +92,7 @@ export const App: React.FC = () => {
   const recordTimerRef = useRef<any>(null);
 
   const [midiConnected, setMidiConnected] = useState<boolean>(false);
-  const [midiDeviceName, setMidiDeviceName] = useState<string | null>(null);
+  const [, setMidiDeviceName] = useState<string | null>(null);
   const [midiToast, setMidiToast] = useState<{ message: string; sub?: string } | null>(null);
   const midiToastTimerRef = useRef<any>(null);
   const midiEngineRef = useRef<MidiEngine | null>(null);
@@ -69,13 +109,15 @@ export const App: React.FC = () => {
     applyPreset?: (p: Preset) => void;
   }>({});
 
-  // Preset & Parameter States (Start transparently on Direct Bypass)
+  // Base Preset & Parameter States (User-controlled knob positions)
   const defaultPreset = PRESETS.find((p) => p.id === 'clean') || PRESETS[0];
   const [videoParams, setVideoParams] = useState<VideoBendingParams>(defaultPreset.video);
   const [audioParams, setAudioParams] = useState<AudioBendingParams>(defaultPreset.audio);
+  const [modulatedVideoParams, setModulatedVideoParams] = useState<VideoBendingParams>(defaultPreset.video);
+  const [modulatedAudioParams, setModulatedAudioParams] = useState<AudioBendingParams>(defaultPreset.audio);
   const [activePresetId, setActivePresetId] = useState<string>(defaultPreset.id);
 
-  // User Saved Presets State (Persisted in localStorage)
+  // User Saved Presets State
   const [userPresets, setUserPresets] = useState<UserPreset[]>(() => {
     try {
       const saved = localStorage.getItem('ytb_circuitbend_user_presets');
@@ -85,9 +127,29 @@ export const App: React.FC = () => {
     }
   });
 
-  // Zen Mode & Snapshot States
+  // Zen Mode, Share URL & Snapshot States
   const [isZenMode, setIsZenMode] = useState<boolean>(false);
   const [snapshotFlash, setSnapshotFlash] = useState<boolean>(false);
+  const [shareUrlCopied, setShareUrlCopied] = useState<boolean>(false);
+
+  // Serum Modulation Matrix, X/Y Chaos Pad, BPM Tap Tempo & Preset A/B Morph State
+  const [modRoutings, setModRoutings] = useState<ModRouting[]>([]);
+  const [macroXY, setMacroXY] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 });
+  const [xyHold, setXyHold] = useState<boolean>(false);
+  const [bpm, setBpm] = useState<number>(120);
+  const tapTimesRef = useRef<number[]>([]);
+  const [punchInFx, setPunchInFx] = useState<'datamosh' | 'glitch' | 'crush' | null>(null);
+  const [morphSlotA, setMorphSlotA] = useState<string>('clean');
+  const [morphSlotB, setMorphSlotB] = useState<string>('abandoned-mall');
+  const [morphAmount, setMorphAmount] = useState<number>(0);
+
+  const liveSourcesRef = useRef<Record<ModSourceId, number>>({
+    lfo1: 0.5,
+    lfo2: 0.5,
+    envAudio: 0.0,
+    macroX: 0.5,
+    macroY: 0.5
+  });
 
   // LFO Multi-Destination Modulation Matrix State
   const [lfoConfig, setLfoConfig] = useState<LfoConfig>({
@@ -119,28 +181,202 @@ export const App: React.FC = () => {
   const lfoDriftTargetRef = useRef<number>(0.5);
   const lastLfoStepRef = useRef<number>(0);
 
-  // LFO Continuous Modulation Loop across Multi-Target Matrix
-  useEffect(() => {
-    if (!lfoConfig.enabled) return;
-    let animId: number;
+  const lfo2RandomValRef = useRef<number>(0.5);
+  const lfo2DriftCurrentRef = useRef<number>(0.5);
+  const lfo2DriftTargetRef = useRef<number>(0.5);
+  const lastLfo2StepRef = useRef<number>(0);
 
-    const evalWave = (phase: number, shape: LfoShape): number => {
+  const lfo1PhaseRef = useRef<number>(0);
+  const lfo2PhaseRef = useRef<number>(0);
+  const lastModFrameTimeRef = useRef<number>(performance.now() / 1000);
+
+  const showToast = useCallback((message: string, sub?: string) => {
+    setMidiToast({ message, sub });
+    if (midiToastTimerRef.current) clearTimeout(midiToastTimerRef.current);
+    midiToastTimerRef.current = setTimeout(() => setMidiToast(null), 2600);
+  }, []);
+
+  // Drag & Drop Routing Handlers
+  const handleDropModSource = useCallback((source: ModSourceId, target: ModTargetPath, amount = 0.55) => {
+    setLfoConfig((prev) => ({ ...prev, enabled: true }));
+    setModRoutings((prev) => {
+      const existingIdx = prev.findIndex((r) => r.source === source && r.target === target);
+      if (existingIdx !== -1) {
+        const copy = [...prev];
+        copy[existingIdx] = {
+          ...copy[existingIdx],
+          amount: Math.max(-1, Math.min(1, copy[existingIdx].amount + 0.2))
+        };
+        return copy;
+      }
+      return [
+        ...prev,
+        {
+          id: `${source}-${target}-${Date.now()}`,
+          source,
+          target,
+          amount,
+          bipolar: source !== 'envAudio'
+        }
+      ];
+    });
+    showToast(`🔗 MODULATION : ${source.toUpperCase()} → ${target.toUpperCase()}`, 'Glissez le badge verticalement pour ajuster la profondeur');
+  }, [showToast]);
+
+  const handleUpdateModAmount = useCallback((routingId: string, amount: number) => {
+    setModRoutings((prev) => prev.map((r) => (r.id === routingId ? { ...r, amount } : r)));
+  }, []);
+
+  const handleToggleModBipolar = useCallback((routingId: string) => {
+    setModRoutings((prev) => prev.map((r) => (r.id === routingId ? { ...r, bipolar: !r.bipolar } : r)));
+  }, []);
+
+  const handleRemoveMod = useCallback((routingId: string) => {
+    setModRoutings((prev) => prev.filter((r) => r.id !== routingId));
+  }, []);
+
+  // Synchronize LFO1 & LFO2 rates when BPM changes or Tap Tempo is triggered
+  const syncLfoToBpm = useCallback((nextBpm: number) => {
+    setBpm(nextBpm);
+    setLfoConfig((prev) => {
+      const l1Div: BpmSyncDivision = prev.lfo1?.syncDivision && prev.lfo1.syncDivision !== 'free' ? prev.lfo1.syncDivision : '1/4';
+      const l2Div: BpmSyncDivision = prev.lfo2?.syncDivision && prev.lfo2.syncDivision !== 'free' ? prev.lfo2.syncDivision : '1/2';
+      const l1Hz = getEffectiveLfoRateHz(l1Div, prev.lfo1?.rate ?? prev.rate, nextBpm);
+      const l2Hz = getEffectiveLfoRateHz(l2Div, prev.lfo2?.rate ?? prev.rate * 1.5, nextBpm);
+      return {
+        ...prev,
+        rate: l1Hz,
+        lfo1: {
+          shape: prev.lfo1?.shape ?? prev.shape,
+          rate: l1Hz,
+          syncDivision: l1Div,
+          points: prev.lfo1?.points ?? SHAPE_POINTS[prev.shape] ?? SHAPE_POINTS.sine
+        },
+        lfo2: {
+          shape: prev.lfo2?.shape ?? 'triangle',
+          rate: l2Hz,
+          syncDivision: l2Div,
+          points: prev.lfo2?.points ?? SHAPE_POINTS.triangle
+        }
+      };
+    });
+  }, []);
+
+  // Tap Tempo Handler
+  const handleTapTempo = useCallback(() => {
+    const now = performance.now();
+    const recent = tapTimesRef.current.filter((t) => now - t < 3000);
+    recent.push(now);
+    tapTimesRef.current = recent;
+    if (recent.length >= 2) {
+      let sum = 0;
+      for (let i = 1; i < recent.length; i++) {
+        sum += recent[i] - recent[i - 1];
+      }
+      const avgMs = sum / (recent.length - 1);
+      const detectedBpm = Math.max(40, Math.min(220, Math.round(60000 / avgMs)));
+      syncLfoToBpm(detectedBpm);
+      showToast(`⏱️ TAP TEMPO : ${detectedBpm} BPM`, 'Horloge LFO 1 (1/4) & LFO 2 (1/2) synchronisées');
+    }
+  }, [showToast, syncLfoToBpm]);
+
+  // Preset A/B Morphing Crossfader Interpolation
+  const handleChangeMorphAmount = useCallback((t: number) => {
+    setMorphAmount(t);
+    const findPreset = (id: string) =>
+      PRESETS.find((p) => p.id === id) || userPresets.find((u) => u.id === id) || PRESETS[0];
+
+    const pA = findPreset(morphSlotA);
+    const pB = findPreset(morphSlotB);
+    if (!pA || !pB) return;
+
+    const lerp = (a: number, b: number) => Number((a + (b - a) * t).toFixed(3));
+
+    const morphedVideo: VideoBendingParams = {
+      glitchIntensity: lerp(pA.video.glitchIntensity, pB.video.glitchIntensity),
+      rgbShift: lerp(pA.video.rgbShift, pB.video.rgbShift),
+      scanlines: lerp(pA.video.scanlines, pB.video.scanlines),
+      colorBleed: lerp(pA.video.colorBleed, pB.video.colorBleed),
+      feedback: lerp(pA.video.feedback, pB.video.feedback),
+      noise: lerp(pA.video.noise, pB.video.noise),
+      vaporwaveTint: lerp(pA.video.vaporwaveTint, pB.video.vaporwaveTint),
+      crtCurvature: lerp(pA.video.crtCurvature, pB.video.crtCurvature),
+      apertureGrille: lerp(pA.video.apertureGrille, pB.video.apertureGrille),
+      vhsHeadSwitching: lerp(pA.video.vhsHeadSwitching, pB.video.vhsHeadSwitching),
+      vHoldDrift: lerp(pA.video.vHoldDrift, pB.video.vHoldDrift),
+      meshDisplacement: lerp(pA.video.meshDisplacement, pB.video.meshDisplacement),
+      chromaSmear: lerp(pA.video.chromaSmear, pB.video.chromaSmear),
+      audioReact: lerp(pA.video.audioReact, pB.video.audioReact),
+      luminance: lerp(pA.video.luminance, pB.video.luminance),
+      datamosh: lerp(pA.video.datamosh ?? 0, pB.video.datamosh ?? 0)
+    };
+
+    const morphedAudio: AudioBendingParams = {
+      ...audioParams,
+      bitcrush: lerp(pA.audio.bitcrush, pB.audio.bitcrush),
+      drive: lerp(pA.audio.drive, pB.audio.drive),
+      filterCutoff: Math.round(lerp(pA.audio.filterCutoff, pB.audio.filterCutoff)),
+      filterResonance: lerp(pA.audio.filterResonance, pB.audio.filterResonance),
+      tapeSpeed: lerp(pA.audio.tapeSpeed, pB.audio.tapeSpeed),
+      wowRate: lerp(pA.audio.wowRate, pB.audio.wowRate),
+      wowDepth: lerp(pA.audio.wowDepth, pB.audio.wowDepth),
+      flutterRate: lerp(pA.audio.flutterRate, pB.audio.flutterRate),
+      flutterDepth: lerp(pA.audio.flutterDepth, pB.audio.flutterDepth),
+      delayTime: lerp(pA.audio.delayTime, pB.audio.delayTime),
+      reverbWet: lerp(pA.audio.reverbWet, pB.audio.reverbWet),
+      tapeTone: lerp(pA.audio.tapeTone, pB.audio.tapeTone),
+      tapeHiss: lerp(pA.audio.tapeHiss, pB.audio.tapeHiss),
+      tapeDropouts: lerp(pA.audio.tapeDropouts, pB.audio.tapeDropouts),
+      stutterSpeed: lerp(pA.audio.stutterSpeed, pB.audio.stutterSpeed),
+      ringModMix: lerp(pA.audio.ringModMix ?? 0, pB.audio.ringModMix ?? 0),
+      ringModFreq: Math.round(lerp(pA.audio.ringModFreq ?? 180, pB.audio.ringModFreq ?? 180))
+    };
+
+    setActivePresetId('morph-ab');
+    setVideoParams(morphedVideo);
+    setAudioParams(morphedAudio);
+  }, [morphSlotA, morphSlotB, userPresets, audioParams]);
+
+  // Unified Modulation & LFO Matrix Loop (Non-destructive around base control values!)
+  useEffect(() => {
+    const isChaosPadMoved = Math.abs(macroXY.x - 0.5) > 0.01 || Math.abs(macroXY.y - 0.5) > 0.01;
+    if (!lfoConfig.enabled && modRoutings.length === 0 && !isChaosPadMoved && !punchInFx) {
+      setModulatedVideoParams(videoParams);
+      setModulatedAudioParams(audioParams);
+      return;
+    }
+
+    let animId: number;
+    lastModFrameTimeRef.current = performance.now() / 1000;
+
+    const evalUnitWave = (
+      phase: number,
+      unit: SerumLfoUnit | undefined,
+      fallbackShape: LfoShape,
+      isLfo2: boolean
+    ): number => {
       const p = ((phase % 1.0) + 1.0) % 1.0;
+      const shape = unit?.shape ?? fallbackShape;
       switch (shape) {
         case 'sine':
           return (Math.sin(p * Math.PI * 2) + 1) / 2;
-        case 'triangle':
-          return Math.abs(p * 2 - 1);
-        case 'saw':
-          return p;
-        case 'sawDown':
-          return 1.0 - p;
-        case 'square':
-          return p < 0.5 ? 1.0 : 0.0;
         case 'random':
-          return lfoRandomValRef.current;
+          return isLfo2 ? lfo2RandomValRef.current : lfoRandomValRef.current;
         case 'drift':
-          return lfoDriftCurrentRef.current;
+          return isLfo2 ? lfo2DriftCurrentRef.current : lfoDriftCurrentRef.current;
+        case 'custom':
+          return evalMsegPoints(p, unit?.points ?? SHAPE_POINTS.sine);
+        case 'triangle':
+        case 'saw':
+        case 'sawDown':
+        case 'square':
+          if (unit?.points && unit.points.length >= 2) {
+            return evalMsegPoints(p, unit.points);
+          }
+          if (shape === 'triangle') return Math.abs(p * 2 - 1);
+          if (shape === 'saw') return p;
+          if (shape === 'sawDown') return 1.0 - p;
+          return p < 0.5 ? 1.0 : 0.0;
         default:
           return (Math.sin(p * Math.PI * 2) + 1) / 2;
       }
@@ -148,106 +384,178 @@ export const App: React.FC = () => {
 
     const loop = () => {
       const now = performance.now() / 1000;
-      const basePhase = (now * lfoConfig.rate) % 1.0;
 
-      // Update S&H Random step
-      const step = Math.floor(now * lfoConfig.rate);
-      if (step !== lastLfoStepRef.current) {
-        lastLfoStepRef.current = step;
+      const lfo1Rate = getEffectiveLfoRateHz(
+        lfoConfig.lfo1?.syncDivision ?? 'free',
+        lfoConfig.lfo1?.rate ?? lfoConfig.rate,
+        bpm
+      );
+      const lfo2Rate = getEffectiveLfoRateHz(
+        lfoConfig.lfo2?.syncDivision ?? 'free',
+        lfoConfig.lfo2?.rate ?? lfoConfig.rate * 1.5,
+        bpm
+      );
+
+      const basePhase = ((now * lfo1Rate) % 1.0 + 1.0) % 1.0;
+      const lfo2Phase = ((now * lfo2Rate) % 1.0 + 1.0) % 1.0;
+
+      // Update S&H Random & Drift steps for LFO 1
+      const step1 = Math.floor(now * lfo1Rate);
+      if (step1 !== lastLfoStepRef.current) {
+        lastLfoStepRef.current = step1;
         lfoRandomValRef.current = Math.random();
         lfoDriftTargetRef.current = Math.random();
       }
-
-      // Smooth organic wandering drift
       lfoDriftCurrentRef.current += (lfoDriftTargetRef.current - lfoDriftCurrentRef.current) * 0.04;
 
-      const { targets, phaseSpread, depth, shape, customVideoEnabled, customVideoTarget, customAudioEnabled, customAudioTarget } = lfoConfig;
+      // Update S&H Random & Drift steps for LFO 2
+      const step2 = Math.floor(now * lfo2Rate);
+      if (step2 !== lastLfo2StepRef.current) {
+        lastLfo2StepRef.current = step2;
+        lfo2RandomValRef.current = Math.random();
+        lfo2DriftTargetRef.current = Math.random();
+      }
+      lfo2DriftCurrentRef.current += (lfo2DriftTargetRef.current - lfo2DriftCurrentRef.current) * 0.04;
 
-      // Apply modulation across video destinations
-      setVideoParams((prev) => {
-        let changed = false;
-        const next = { ...prev };
+      // Update live sources for MSEG playhead & routing matrix
+      const lfo1Val = evalUnitWave(basePhase, lfoConfig.lfo1, lfoConfig.shape, false);
+      const lfo2Val = evalUnitWave(lfo2Phase, lfoConfig.lfo2, 'triangle', true);
+      const envAudioVal = audioEngineRef.current ? audioEngineRef.current.getBassEnergy() : 0.0;
+
+      liveSourcesRef.current = {
+        lfo1: lfo1Val,
+        lfo2: lfo2Val,
+        envAudio: envAudioVal,
+        macroX: macroXY.x,
+        macroY: macroXY.y
+      };
+
+      const nextVideo: VideoBendingParams = { ...videoParams };
+      const nextAudio: AudioBendingParams = { ...audioParams };
+
+      // 1. Primary LFO Matrix Targets (Additive / Bipolar around user's base control value)
+      if (lfoConfig.enabled) {
+        const { targets, phaseSpread, depth, shape, customVideoEnabled, customVideoTarget, customAudioEnabled, customAudioTarget } = lfoConfig;
         let idx = 0;
 
-        const getAmt = (scale = 1.0) => {
+        const getWaveBipolar = () => {
           const targetPhase = basePhase + (idx++) * (phaseSpread * 0.22);
-          return evalWave(targetPhase, shape) * depth * scale;
+          return (evalUnitWave(targetPhase, lfoConfig.lfo1, shape, false) - 0.5) * 2.0 * depth;
         };
 
-        if (targets.glitchIntensity) { next.glitchIntensity = getAmt(0.85); changed = true; }
-        if (targets.rgbShift) { next.rgbShift = getAmt(0.75); changed = true; }
-        if (targets.scanlines) { next.scanlines = 0.15 + getAmt(0.65); changed = true; }
-        if (targets.meshDisplacement) { next.meshDisplacement = getAmt(0.75); changed = true; }
-        if (targets.luminance) { next.luminance = getAmt(0.70); changed = true; }
-        if (targets.colorBleed) { next.colorBleed = getAmt(0.80); changed = true; }
+        const modNorm = (base: number, scale = 0.5) =>
+          Math.max(0.0, Math.min(1.0, base + getWaveBipolar() * scale));
 
-        // Dynamic custom assignable video slot
+        if (targets.glitchIntensity) nextVideo.glitchIntensity = modNorm(videoParams.glitchIntensity, 0.45);
+        if (targets.rgbShift) nextVideo.rgbShift = modNorm(videoParams.rgbShift, 0.45);
+        if (targets.scanlines) nextVideo.scanlines = modNorm(videoParams.scanlines || 0.25, 0.45);
+        if (targets.meshDisplacement) nextVideo.meshDisplacement = modNorm(videoParams.meshDisplacement, 0.45);
+        if (targets.luminance) nextVideo.luminance = modNorm(videoParams.luminance, 0.45);
+        if (targets.colorBleed) nextVideo.colorBleed = modNorm(videoParams.colorBleed, 0.45);
+
         if (customVideoEnabled && customVideoTarget) {
-          const amt = getAmt(1.0);
-          if (customVideoTarget === 'crtCurvature') next.crtCurvature = amt * 0.35;
-          else if (customVideoTarget === 'vHoldDrift') next.vHoldDrift = amt * 0.25;
-          else if (customVideoTarget === 'vhsHeadSwitching') next.vhsHeadSwitching = amt * 0.75;
-          else if (customVideoTarget === 'feedback') next.feedback = amt * 0.65;
-          else if (customVideoTarget === 'noise') next.noise = amt * 0.45;
-          else if (customVideoTarget === 'vaporwaveTint') next.vaporwaveTint = 0.2 + amt * 0.75;
-          else if (customVideoTarget === 'apertureGrille') next.apertureGrille = amt * 0.65;
-          else if (customVideoTarget === 'chromaSmear') next.chromaSmear = amt * 0.65;
-          else if (customVideoTarget === 'audioReact') next.audioReact = amt * 0.85;
-          else (next as any)[customVideoTarget] = amt * 0.8;
-          changed = true;
+          (nextVideo as any)[customVideoTarget] = modNorm((videoParams as any)[customVideoTarget] ?? 0.25, 0.45);
         }
 
-        return changed ? next : prev;
-      });
+        // Audio quick matrix targets
+        if (targets.filterCutoff) {
+          const swing = getWaveBipolar() * 4500;
+          nextAudio.filterCutoff = Math.round(Math.max(80, Math.min(16000, audioParams.filterCutoff + swing)));
+        }
+        if (targets.drive) {
+          nextAudio.drive = Number(modNorm(audioParams.drive || 0.1, 0.22).toFixed(2));
+        }
+        if (targets.tapeSpeed) {
+          const spdSwing = getWaveBipolar() * 0.05;
+          nextAudio.tapeSpeed = Number(Math.max(0.5, Math.min(1.1, audioParams.tapeSpeed + spdSwing)).toFixed(3));
+        }
+        if (targets.reverbWet) {
+          nextAudio.reverbWet = Number(modNorm(audioParams.reverbWet || 0.2, 0.35).toFixed(2));
+        }
 
-      // Apply modulation across audio destinations with musical, controlled ranges
-      setAudioParams((prev) => {
-        let changed = false;
-        const next = { ...prev };
-        let idx = 6; // Phase offset audio from video
-
-        const getAmt = (scale = 1.0) => {
-          const targetPhase = basePhase + (idx++) * (phaseSpread * 0.22);
-          return evalWave(targetPhase, shape) * depth * scale;
-        };
-
-        // Musical filter sweep: keeps fundamental frequencies intact (2200Hz -> 8500Hz)
-        if (targets.filterCutoff) { next.filterCutoff = Math.round(2200 + getAmt(1.0) * 6300); changed = true; }
-        // Subtle analog saturation breathing
-        if (targets.drive) { next.drive = Number((0.04 + getAmt(0.18)).toFixed(2)); changed = true; }
-        // Gentle organic tape wow (±0.035 drift around normal speed instead of violent octave shifts)
-        if (targets.tapeSpeed) { next.tapeSpeed = Number((0.92 + (getAmt(1.0) - 0.5) * 0.07).toFixed(3)); changed = true; }
-        // Lush mallsoft ambience breathing
-        if (targets.reverbWet) { next.reverbWet = Number((0.15 + getAmt(0.32)).toFixed(2)); changed = true; }
-
-        // Dynamic custom assignable audio slot - carefully scaled for pleasant tone
         if (customAudioEnabled && customAudioTarget) {
-          const amt = getAmt(1.0);
-          if (customAudioTarget === 'bitcrush') next.bitcrush = Number((amt * 0.08).toFixed(2));
-          else if (customAudioTarget === 'filterResonance') next.filterResonance = Number((0.8 + amt * 1.5).toFixed(1));
-          else if (customAudioTarget === 'wowRate') next.wowRate = Number((0.5 + amt * 1.0).toFixed(1));
-          else if (customAudioTarget === 'wowDepth') next.wowDepth = Number((0.04 + amt * 0.14).toFixed(2));
-          else if (customAudioTarget === 'flutterRate') next.flutterRate = Number((6.0 + amt * 4.0).toFixed(1));
-          else if (customAudioTarget === 'flutterDepth') next.flutterDepth = Number((0.02 + amt * 0.08).toFixed(2));
-          else if (customAudioTarget === 'tapeTone') next.tapeTone = Number((0.15 + amt * 0.35).toFixed(2));
-          else if (customAudioTarget === 'tapeHiss') next.tapeHiss = Number((0.005 + amt * 0.015).toFixed(3));
-          else if (customAudioTarget === 'tapeDropouts') next.tapeDropouts = Number((amt * 0.08).toFixed(2));
-          else if (customAudioTarget === 'stutterSpeed') next.stutterSpeed = Number((0.08 + amt * 0.12).toFixed(2));
-          else (next as any)[customAudioTarget] = amt * 0.3;
-          changed = true;
+          const range = PARAM_RANGES[`audio.${customAudioTarget}`] || [0.0, 1.0];
+          const span = range[1] - range[0];
+          const base = (audioParams as any)[customAudioTarget] ?? range[0];
+          const modulated = Math.max(range[0], Math.min(range[1], base + getWaveBipolar() * span * 0.25));
+          (nextAudio as any)[customAudioTarget] = Number(modulated.toFixed(3));
         }
+      }
 
-        return changed ? next : prev;
-      });
+      // 2. Drag & Drop ModRoutings (Supports LFO1, LFO2, ENV AUDIO, MACRO X, MACRO Y)
+      for (const route of modRoutings) {
+        const rawSrc = liveSourcesRef.current[route.source] ?? 0.5;
+        const [minVal, maxVal] = PARAM_RANGES[route.target] || [0.0, 1.0];
+
+        if (route.target.startsWith('video.')) {
+          const k = route.target.replace('video.', '') as VideoParamKey;
+          const base = (nextVideo[k] ?? 0) as number;
+          const effectiveBipolar =
+            route.bipolar &&
+            route.source !== 'envAudio' &&
+            base > minVal + (maxVal - minVal) * 0.05;
+          const srcSignal = effectiveBipolar ? (rawSrc - 0.5) * 2.0 : rawSrc;
+          const delta = srcSignal * route.amount * (maxVal - minVal);
+          (nextVideo as any)[k] = Number(Math.max(minVal, Math.min(maxVal, base + delta)).toFixed(3));
+        } else if (route.target.startsWith('audio.')) {
+          const k = route.target.replace('audio.', '') as AudioParamKey;
+          const base = (nextAudio[k] ?? 0) as number;
+          const effectiveBipolar =
+            route.bipolar &&
+            route.source !== 'envAudio' &&
+            base > minVal + (maxVal - minVal) * 0.05;
+          const srcSignal = effectiveBipolar ? (rawSrc - 0.5) * 2.0 : rawSrc;
+          const delta = srcSignal * route.amount * (maxVal - minVal);
+          const val = Math.max(minVal, Math.min(maxVal, base + delta));
+          (nextAudio as any)[k] = maxVal > 100 ? Math.round(val) : Number(val.toFixed(3));
+        }
+      }
+
+      // 3. Direct X/Y Chaos Pad Performance Offset when no manual macroX/macroY routing is assigned
+      const hasMacroRouting = modRoutings.some((r) => r.source === 'macroX' || r.source === 'macroY');
+      if (isChaosPadMoved && !hasMacroRouting) {
+        const dx = macroXY.x - 0.5;
+        const dy = macroXY.y - 0.5;
+        nextVideo.glitchIntensity = Math.max(0, Math.min(1, nextVideo.glitchIntensity + Math.max(0, dx) * 0.7));
+        nextVideo.rgbShift = Math.max(0, Math.min(1, nextVideo.rgbShift + Math.abs(dx) * 0.6));
+        nextVideo.datamosh = Math.max(0, Math.min(1, (nextVideo.datamosh || 0) + Math.max(0, dy) * 0.8));
+        nextAudio.filterCutoff = Math.round(Math.max(120, Math.min(16000, nextAudio.filterCutoff + dy * 9000)));
+      }
+
+      // 4. Momentary Keyboard Punch-In FX (Hold D / X / C)
+      if (punchInFx === 'datamosh') {
+        nextVideo.datamosh = Math.max(nextVideo.datamosh, 0.85);
+        nextVideo.rgbShift = Math.min(1, nextVideo.rgbShift + 0.35);
+      } else if (punchInFx === 'glitch') {
+        nextVideo.glitchIntensity = Math.max(nextVideo.glitchIntensity, 0.78);
+        nextVideo.vhsHeadSwitching = Math.max(nextVideo.vhsHeadSwitching, 0.65);
+        nextVideo.rgbShift = Math.min(1, nextVideo.rgbShift + 0.4);
+      } else if (punchInFx === 'crush') {
+        nextAudio.bitcrush = Math.max(nextAudio.bitcrush, 0.55);
+        nextAudio.ringModMix = Math.max(nextAudio.ringModMix || 0, 0.65);
+        nextVideo.colorBleed = Math.max(nextVideo.colorBleed, 0.75);
+      }
+
+      // Update Web Audio engine directly at 60Hz for zero latency
+      if (audioEngineRef.current) {
+        audioEngineRef.current.updateParams(nextAudio);
+      }
+
+      // Commit React UI state at ~30Hz (every 32ms) so React DOM reconciliation never starves WebGL / MediaRecorder
+      if (now - lastModFrameTimeRef.current >= 0.032) {
+        lastModFrameTimeRef.current = now;
+        setModulatedVideoParams(nextVideo);
+        setModulatedAudioParams(nextAudio);
+      }
 
       animId = requestAnimationFrame(loop);
     };
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [lfoConfig]);
+  }, [lfoConfig, modRoutings, videoParams, audioParams, macroXY, bpm, punchInFx]);
 
-  // Initialize Web MIDI Engine (Novation Launch Control, XL, Generic & MIDI Learn)
+  // Initialize Web MIDI Engine
   useEffect(() => {
     const engine = new MidiEngine();
     midiEngineRef.current = engine;
@@ -262,61 +570,92 @@ export const App: React.FC = () => {
         const actionLabel = ev.targetMapped 
           ? ev.targetMapped.replace('action.', '').replace('video.', 'Vidéo: ').replace('audio.', 'Audio: ') 
           : null;
-        setMidiToast({
-          message: actionLabel 
+        showToast(
+          actionLabel 
             ? `🎛️ MIDI : ${actionLabel.toUpperCase()}` 
             : `🎛️ Signal MIDI : ${ev.type.toUpperCase()} #${ev.paramNumber}`,
-          sub: ev.targetMapped ? `Déclenché via Pad/Bouton #${ev.paramNumber}` : `Valeur: ${ev.value} (Ouvrez le menu MIDI pour assigner)`
-        });
-        if (midiToastTimerRef.current) clearTimeout(midiToastTimerRef.current);
-        midiToastTimerRef.current = setTimeout(() => setMidiToast(null), 2500);
+          ev.targetMapped ? `Déclenché via Pad/Bouton #${ev.paramNumber}` : `Valeur: ${ev.value} (Ouvrez le menu MIDI pour assigner)`
+        );
       }
     });
 
     engine.init((target: MidiTarget, normalized: number, isTrigger: boolean) => {
-      // 1. Video parameters
       if (target.startsWith('video.')) {
         const key = target.replace('video.', '') as keyof VideoBendingParams;
-        setActivePresetId(prev => prev === 'custom' ? prev : 'custom');
-        setVideoParams(prev => ({ ...prev, [key]: normalized }));
-      }
-      // 2. Audio parameters
-      else if (target.startsWith('audio.')) {
+        setActivePresetId((prev) => (prev === 'custom' ? prev : 'custom'));
+        setVideoParams((prev) => ({ ...prev, [key]: normalized }));
+      } else if (target.startsWith('audio.')) {
         const key = target.replace('audio.', '');
-        setActivePresetId(prev => prev === 'custom' ? prev : 'custom');
+        setActivePresetId((prev) => (prev === 'custom' ? prev : 'custom'));
         if (key === 'filterCutoff') {
-          // Logarithmic sweep 80Hz -> 18000Hz for natural musical feel
           const hz = Math.round(80 * Math.pow(18000 / 80, normalized));
-          setAudioParams(prev => ({ ...prev, filterCutoff: hz }));
+          setAudioParams((prev) => ({ ...prev, filterCutoff: hz }));
         } else if (key === 'filterResonance') {
-          setAudioParams(prev => ({ ...prev, filterResonance: 0.1 + normalized * 18.0 }));
+          setAudioParams((prev) => ({ ...prev, filterResonance: 0.1 + normalized * 18.0 }));
         } else if (key === 'tapeSpeed') {
-          setAudioParams(prev => ({ ...prev, tapeSpeed: 0.5 + normalized * 1.0 }));
+          setAudioParams((prev) => ({ ...prev, tapeSpeed: 0.5 + normalized * 1.0 }));
         } else if (key === 'stutterSpeed') {
-          setAudioParams(prev => ({ ...prev, stutterSpeed: 0.05 + normalized * 0.30 }));
+          setAudioParams((prev) => ({ ...prev, stutterSpeed: 0.05 + normalized * 0.30 }));
+        } else if (key === 'ringModFreq') {
+          setAudioParams((prev) => ({ ...prev, ringModFreq: Math.round(30 + normalized * 1170) }));
         } else {
-          setAudioParams(prev => ({ ...prev, [key]: normalized }));
+          setAudioParams((prev) => ({ ...prev, [key]: normalized }));
         }
-      }
-      // 3. Action triggers (Pads / Buttons)
-      else if (target.startsWith('action.') && isTrigger) {
+      } else if (target.startsWith('mod.')) {
         const h = actionHandlersRef.current;
-        console.log(`%c[MIDI ACTION TRIGGERED] -> ${target}`, 'background: #047857; color: #fff; font-weight: bold; padding: 2px 6px; border-radius: 4px;');
+        if (target === 'mod.morphAB' && h.changeMorph) {
+          h.changeMorph(Number(normalized.toFixed(2)));
+        } else if (target === 'mod.macroX') {
+          setMacroXY((prev) => ({ ...prev, x: Number(normalized.toFixed(3)) }));
+        } else if (target === 'mod.macroY') {
+          setMacroXY((prev) => ({ ...prev, y: Number(normalized.toFixed(3)) }));
+        } else if (target === 'mod.lfo1Rate') {
+          const hz = Number((0.1 + normalized * 11.9).toFixed(2));
+          setLfoConfig((prev) => ({
+            ...prev,
+            enabled: true,
+            rate: hz,
+            lfo1: {
+              ...(prev.lfo1 || { shape: prev.shape, points: SHAPE_POINTS[prev.shape] || SHAPE_POINTS.sine }),
+              rate: hz,
+              syncDivision: 'free'
+            }
+          }));
+        } else if (target === 'mod.lfo2Rate') {
+          const hz = Number((0.1 + normalized * 11.9).toFixed(2));
+          setLfoConfig((prev) => ({
+            ...prev,
+            enabled: true,
+            lfo2: {
+              ...(prev.lfo2 || { shape: 'triangle', points: SHAPE_POINTS.triangle }),
+              rate: hz,
+              syncDivision: 'free'
+            }
+          }));
+        } else if (target === 'mod.lfoDepth') {
+          setLfoConfig((prev) => ({ ...prev, enabled: true, depth: Number(normalized.toFixed(2)) }));
+        }
+      } else if (target.startsWith('action.') && isTrigger) {
+        const h = actionHandlersRef.current;
         if (target === 'action.playToggle' && h.playToggle) h.playToggle();
         else if (target === 'action.tapeFreeze' && h.tapeFreeze) h.tapeFreeze();
         else if (target === 'action.randomize' && h.randomize) h.randomize();
         else if (target === 'action.resetClean' && h.resetClean) h.resetClean();
         else if (target === 'action.snapshot' && h.snapshot) h.snapshot();
         else if (target === 'action.recordToggle' && h.recordToggle) h.recordToggle();
+        else if (target === 'action.tapTempo' && h.tapTempo) h.tapTempo();
+        else if (target === 'action.lfoToggle' && h.lfoToggle) h.lfoToggle();
+        else if (target === 'action.vcrOsdToggle' && h.vcrOsdToggle) h.vcrOsdToggle();
         else if (target === 'action.preset0' && h.applyPreset) h.applyPreset(PRESETS[0]);
         else if (target === 'action.preset1' && h.applyPreset) h.applyPreset(PRESETS[1]);
         else if (target === 'action.preset2' && h.applyPreset) h.applyPreset(PRESETS[2]);
         else if (target === 'action.preset3' && h.applyPreset) h.applyPreset(PRESETS[3]);
+        else if (target === 'action.preset4' && h.applyPreset && PRESETS[4]) h.applyPreset(PRESETS[4]);
         else if (target === 'action.nextTrack' && h.nextTrack) h.nextTrack();
         else if (target === 'action.prevTrack' && h.prevTrack) h.prevTrack();
       }
     });
-  }, []);
+  }, [showToast]);
 
   // Initialize Web Audio Engine
   useEffect(() => {
@@ -329,12 +668,12 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Sync Audio Parameters to Engine
+  // Sync Modulated Audio Parameters to Engine
   useEffect(() => {
     if (audioEngineRef.current) {
-      audioEngineRef.current.updateParams(audioParams);
+      audioEngineRef.current.updateParams(modulatedAudioParams);
     }
-  }, [audioParams]);
+  }, [modulatedAudioParams]);
 
   // Connect video element to Web Audio
   const handleEnsureAudioWired = useCallback(() => {
@@ -344,15 +683,136 @@ export const App: React.FC = () => {
     setAudioState(audioEngineRef.current.getContextState());
   }, []);
 
-  // Reference to prevent React StrictMode double-mounting initial demo
+  // Decode URL `?patch=...` if present on initial load
   const initialLoadRef = useRef<boolean>(false);
-
-  // Load Initial Default Track / Playlist (Strictly once)
   useEffect(() => {
     if (initialLoadRef.current) return;
     initialLoadRef.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const encodedPatch = params.get('patch');
+    if (encodedPatch) {
+      try {
+        const decoded = JSON.parse(atob(encodedPatch));
+        if (decoded.video) setVideoParams((prev) => ({ ...prev, ...decoded.video }));
+        if (decoded.audio) setAudioParams((prev) => ({ ...prev, ...decoded.audio }));
+        if (decoded.lfo) setLfoConfig((prev) => ({ ...prev, ...decoded.lfo }));
+        if (decoded.modRoutings) setModRoutings(decoded.modRoutings);
+        setActivePresetId('shared-url');
+        // Clean `?patch=...` from the address bar after importing so refreshes/HMR don't re-trigger it
+        window.history.replaceState({}, '', window.location.pathname);
+        showToast('🔗 PATCH URL CHARGÉ', 'Réglages restaurés depuis le lien partagé');
+      } catch (e) {
+        console.warn('[Patch URL Decode Error]:', e);
+      }
+    }
+
     appendPlaylistUrl('https://www.youtube.com/watch?v=4RCrvRXUrs4&list=PLqftF03PwhxzYiafvN4C1AzQtDuPeeYqw');
+  }, [showToast]);
+
+  // Share Patch via URL (`?patch=...`)
+  const handleSharePatchUrl = useCallback(() => {
+    try {
+      const payload = {
+        video: videoParams,
+        audio: audioParams,
+        lfo: lfoConfig,
+        modRoutings
+      };
+      const base64 = btoa(JSON.stringify(payload));
+      const url = `${window.location.origin}${window.location.pathname}?patch=${encodeURIComponent(base64)}`;
+      navigator.clipboard.writeText(url);
+      setShareUrlCopied(true);
+      setTimeout(() => setShareUrlCopied(false), 2200);
+      showToast('🔗 LIEN DE PATCH COPIÉ', 'Partagez cette URL pour envoyer votre patch exact');
+    } catch (err) {
+      console.error('[Share URL Error]:', err);
+    }
+  }, [videoParams, audioParams, lfoConfig, modRoutings, showToast]);
+
+  // Stop any active Webcam / Screen MediaStream
+  const stopLiveMediaStream = useCallback(() => {
+    if (liveMediaStreamRef.current) {
+      liveMediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      liveMediaStreamRef.current = null;
+    }
+    if (videoRef.current && videoRef.current.srcObject) {
+      videoRef.current.srcObject = null;
+    }
   }, []);
+
+  // Switch Live Input Source (YouTube / Webcam / Screen / Local File)
+  const handleSelectLiveSource = useCallback(async (source: LiveInputSource) => {
+    if (!videoRef.current) return;
+
+    if (source === 'webcam') {
+      try {
+        stopLiveMediaStream();
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        liveMediaStreamRef.current = stream;
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setLiveSource('webcam');
+        setIsPlaying(true);
+        setLocalMediaTitle('LIVE WEBCAM FEED');
+        showToast('📷 WEBCAM ACTIVE', 'Flux caméra routé dans les shaders VHS/CRT');
+      } catch (err: any) {
+        showToast('⚠️ ACCÈS WEBCAM REFUSÉ', err?.message || 'Vérifiez les permissions caméra');
+      }
+    } else if (source === 'screen') {
+      try {
+        stopLiveMediaStream();
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        liveMediaStreamRef.current = stream;
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setLiveSource('screen');
+        setIsPlaying(true);
+        setLocalMediaTitle('LIVE SCREEN CAPTURE');
+        showToast('🖥️ CAPTURE D’ÉCRAN ACTIVE', 'Flux écran routé dans le moteur Glitch');
+      } catch (err: any) {
+        showToast('⚠️ CAPTURE ANNULÉE', err?.message || 'Partage d’écran interrompu');
+      }
+    } else if (source === 'youtube') {
+      stopLiveMediaStream();
+      setLiveSource('youtube');
+      setLocalMediaTitle(null);
+      if (playlist[currentIndex]) {
+        loadTrackAtIndex(currentIndex, playlist);
+      }
+    }
+  }, [currentIndex, playlist, showToast, stopLiveMediaStream]);
+
+  // Load Dropped or Selected Local File (Video / Audio / Preset JSON)
+  const handleLoadLocalFile = useCallback((file: File) => {
+    if (file.name.toLowerCase().endsWith('.json')) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          handleImportPresetJson(reader.result);
+          showToast(`📂 PRESET IMPORTÉ : ${file.name}`, 'Patch JSON appliqué par Drag & Drop');
+        }
+      };
+      reader.readAsText(file);
+      return;
+    }
+
+    if (!videoRef.current) return;
+    stopLiveMediaStream();
+    const blobUrl = URL.createObjectURL(file);
+    setLiveSource('local');
+    setLocalMediaTitle(file.name);
+    videoRef.current.src = blobUrl;
+    videoRef.current.loop = true;
+    videoRef.current.load();
+    videoRef.current.play().then(() => {
+      setIsPlaying(true);
+      handleEnsureAudioWired();
+      showToast(`🎬 MÉDIA LOCAL : ${file.name}`, 'Lecture directe dans les shaders & le DSP Audio');
+    }).catch((err) => {
+      console.warn('[Local File Playback Warning]:', err);
+    });
+  }, [handleEnsureAudioWired, showToast, stopLiveMediaStream]);
 
   // Load & Append YouTube Video / Playlist to current queue
   const appendPlaylistUrl = async (url: string) => {
@@ -381,7 +841,6 @@ export const App: React.FC = () => {
         const newItems = data.items.filter((i: PlaylistItem) => !existingIds.has(i.id));
 
         if (newItems.length === 0) {
-          // Track is already in playlist, just switch to it without duplicating!
           const existingIdx = prev.findIndex(i => i.id === data.items[0]?.id);
           if (existingIdx !== -1) {
             setTimeout(() => loadTrackAtIndex(existingIdx, prev), 30);
@@ -409,14 +868,17 @@ export const App: React.FC = () => {
 
   const loadTrackAtIndex = (index: number, list = playlist) => {
     if (!list[index] || !videoRef.current) return;
+    stopLiveMediaStream();
+    setLiveSource('youtube');
+    setLocalMediaTitle(null);
     setCurrentIndex(index);
     const track = list[index];
 
-    // Seed duration from metadata so it never shows Infinity:NaN
     if (track?.duration && track.duration > 0) {
       setDuration(track.duration);
     }
 
+    videoRef.current.loop = false;
     videoRef.current.src = track.streamUrl;
     videoRef.current.load();
     videoRef.current.play().then(() => {
@@ -468,8 +930,6 @@ export const App: React.FC = () => {
     });
   };
 
-  // Unified Tape Stop & Buffer Freeze:
-  // Decelerates playback motor with realistic tape inertia & locks the granular audio buffer and video frame
   const handleToggleTapeFreeze = () => {
     if (!audioEngineRef.current) return;
     handleEnsureAudioWired();
@@ -483,7 +943,6 @@ export const App: React.FC = () => {
     );
     setIsTapeFreeze(nextState);
 
-    // If resuming from tape freeze, ensure video playback continues
     if (!nextState && videoRef.current && videoRef.current.paused) {
       videoRef.current.play().then(() => {
         setIsPlaying(true);
@@ -508,8 +967,8 @@ export const App: React.FC = () => {
         return;
       }
       try {
-        // Natural paint-driven frame capture without timer collision / GPU locks
-        const videoStream = canvasRef.current.captureStream();
+        // Lock captureStream to 30 FPS so offscreen Datamosh passes don't trigger double GPU readbacks
+        const videoStream = canvasRef.current.captureStream(30);
         const audioDest = audioEngineRef.current ? audioEngineRef.current.getMediaStreamDestination() : null;
         const tracks = [
           ...videoStream.getVideoTracks(),
@@ -517,15 +976,15 @@ export const App: React.FC = () => {
         ];
         const combinedStream = new MediaStream(tracks);
 
-        // Prefer native MP4 container if browser supports it
+        // Prioritize hardware-accelerated H.264 & fast VP8 over CPU-heavy software VP9
         const candidateMimeTypes = [
+          'video/webm;codecs=h264,opus',
           'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
           'video/mp4;codecs=avc1,mp4a.40.2',
           'video/mp4;codecs=avc1',
           'video/mp4',
-          'video/webm;codecs=h264,opus',
-          'video/webm;codecs=vp9,opus',
           'video/webm;codecs=vp8,opus',
+          'video/webm;codecs=vp9,opus',
           'video/webm'
         ];
         let mimeType = 'video/webm';
@@ -538,11 +997,10 @@ export const App: React.FC = () => {
           }
         }
 
-        // 8 Mbps broadcast profile ensures butter-smooth hardware encoding without dropping frames
         const recorder = new MediaRecorder(combinedStream, {
           mimeType,
-          videoBitsPerSecond: 8_000_000,
-          audioBitsPerSecond: 256_000
+          videoBitsPerSecond: 4_500_000,
+          audioBitsPerSecond: 192_000
         });
         recordedChunksRef.current = [];
 
@@ -553,6 +1011,8 @@ export const App: React.FC = () => {
         };
 
         recorder.onstop = async () => {
+          // Release canvas capture track immediately so GPU readback stops
+          videoStream.getVideoTracks().forEach((t) => t.stop());
           const rawBlob = new Blob(recordedChunksRef.current, { type: mimeType });
 
           const triggerDownload = (blob: Blob) => {
@@ -568,15 +1028,9 @@ export const App: React.FC = () => {
               URL.revokeObjectURL(url);
             }, 300);
 
-            setMidiToast({
-              message: '💾 CLIP MP4 TÉLÉCHARGÉ',
-              sub: 'Enregistrement 60 FPS sauvegardé avec succès'
-            });
-            if (midiToastTimerRef.current) clearTimeout(midiToastTimerRef.current);
-            midiToastTimerRef.current = setTimeout(() => setMidiToast(null), 2500);
+            showToast('💾 CLIP MP4 TÉLÉCHARGÉ', 'Enregistrement 60 FPS sauvegardé avec succès');
           };
 
-          // Seamless background conversion via server FFmpeg (non-blocking)
           try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -598,12 +1052,11 @@ export const App: React.FC = () => {
             console.warn('[MP4 Background Conversion - fallback to direct download]:', e);
           }
 
-          // Fallback direct download
           triggerDownload(rawBlob);
         };
 
-        // Continuous native encoding without periodic timeslice interruptions
-        recorder.start();
+        // Flush encoded chunks every 1000ms to prevent RAM buffer stalls
+        recorder.start(1000);
         mediaRecorderRef.current = recorder;
         setIsRecording(true);
         setRecordingDuration(0);
@@ -622,9 +1075,9 @@ export const App: React.FC = () => {
     setActivePresetId(preset.id);
     setVideoParams(preset.video);
     setAudioParams(preset.audio);
-    // If selecting Direct Bypass, also bypass LFO modulation for true pure pass-through
     if (preset.id === 'clean') {
       setLfoConfig((prev) => ({ ...prev, enabled: false }));
+      setModRoutings([]);
     }
     if (audioEngineRef.current) {
       audioEngineRef.current.updateParams(preset.audio);
@@ -640,7 +1093,8 @@ export const App: React.FC = () => {
       createdAt: Date.now(),
       video: { ...videoParams },
       audio: { ...audioParams },
-      lfo: { ...lfoConfig }
+      lfo: { ...lfoConfig },
+      modMatrix: [...modRoutings]
     };
     const updated = [newPreset, ...userPresets];
     setUserPresets(updated);
@@ -672,6 +1126,9 @@ export const App: React.FC = () => {
     if (preset.lfo) {
       setLfoConfig(preset.lfo);
     }
+    if (preset.modMatrix) {
+      setModRoutings(preset.modMatrix);
+    }
     if (audioEngineRef.current) {
       audioEngineRef.current.updateParams(preset.audio);
     }
@@ -687,7 +1144,8 @@ export const App: React.FC = () => {
           createdAt: Date.now(),
           video: parsed.video,
           audio: parsed.audio,
-          lfo: parsed.lfo
+          lfo: parsed.lfo,
+          modMatrix: parsed.modMatrix
         };
         const updated = [importedPreset, ...userPresets];
         setUserPresets(updated);
@@ -738,7 +1196,6 @@ export const App: React.FC = () => {
     setActivePresetId('custom-random');
     const rnd = (min: number, max: number) => min + Math.random() * (max - min);
 
-    // Controlled, aesthetic VHS / CRT video bending
     const randomVideo: VideoBendingParams = {
       glitchIntensity: Number(rnd(0.04, 0.35).toFixed(2)),
       rgbShift: Number(rnd(0.08, 0.38).toFixed(2)),
@@ -754,43 +1211,37 @@ export const App: React.FC = () => {
       meshDisplacement: Number(rnd(0.05, 0.35).toFixed(2)),
       chromaSmear: Number(rnd(0.05, 0.35).toFixed(2)),
       audioReact: Number(rnd(0.15, 0.55).toFixed(2)),
-      luminance: Number(rnd(0.05, 0.35).toFixed(2))
+      luminance: Number(rnd(0.05, 0.35).toFixed(2)),
+      datamosh: Number(rnd(0.08, 0.55).toFixed(2))
     };
 
-    // Musical, pleasant tape / lo-fi audio parameters (warm, clear, non-chaotic)
     const randomAudio: AudioBendingParams = {
       ...audioParams,
-      // Slowed & reverb / cassette sweet-spot (0.82x - 0.98x, or 1.0x transparent)
       tapeSpeed: Math.random() > 0.35 ? Number(rnd(0.82, 0.96).toFixed(2)) : 1.0,
-      // Tasteful analog cassette pitch drift (subtle and musical, not sea-sick)
       wowRate: Number(rnd(0.4, 1.2).toFixed(1)),
       wowDepth: Number(rnd(0.03, 0.14).toFixed(2)),
-      // Fine tape head flutter
       flutterRate: Number(rnd(6.0, 9.5).toFixed(1)),
       flutterDepth: Number(rnd(0.01, 0.06).toFixed(2)),
       tapeTone: Number(rnd(0.15, 0.42).toFixed(2)),
       tapeHiss: Number(rnd(0.003, 0.015).toFixed(3)),
       tapeDropouts: Math.random() > 0.5 ? Number(rnd(0.02, 0.08).toFixed(2)) : 0.0,
       stutterSpeed: Number(rnd(0.08, 0.18).toFixed(2)),
-      // Lush, dreamy mallsoft ambience
       reverbWet: Number(rnd(0.15, 0.38).toFixed(2)),
-      // Subtle vintage sampler warmth
       bitcrush: Math.random() > 0.65 ? Number(rnd(0.01, 0.04).toFixed(2)) : 0.0,
       drive: Number(rnd(0.04, 0.16).toFixed(2)),
-      // Warm lowpass: preserves melody, voice, and deep bass (3500Hz -> 9000Hz)
+      ringModMix: Math.random() > 0.75 ? Number(rnd(0.05, 0.22).toFixed(2)) : 0.0,
+      ringModFreq: Math.round(rnd(90, 340)),
       filterCutoff: Math.round(rnd(3500, 9200)),
       filterResonance: Number(rnd(0.8, 1.8).toFixed(1)),
       filterType: 'lowpass'
     };
 
-    // Smooth, musical wave shapes (favoring sine, triangle, and organic drift)
     const musicalShapes: LfoShape[] = ['sine', 'triangle', 'drift', 'sine', 'drift', 'triangle'];
     const randomShape = musicalShapes[Math.floor(Math.random() * musicalShapes.length)];
 
-    // Target selection: select 1-2 focused audio modulations and 1-2 focused video modulations
     const randomTargets: Record<LfoTargetId, boolean> = {
       filterCutoff: false,
-      tapeSpeed: false, // keep pitch stable on random by default unless user dials it
+      tapeSpeed: false,
       drive: false,
       reverbWet: false,
       glitchIntensity: false,
@@ -801,12 +1252,10 @@ export const App: React.FC = () => {
       colorBleed: false
     };
 
-    // Audio modulators (filter sweep, subtle drive saturation, or reverb space breathing)
     const audioChoices: LfoTargetId[] = ['filterCutoff', 'reverbWet', 'drive'];
     const chosenAudio = audioChoices[Math.floor(Math.random() * audioChoices.length)];
     randomTargets[chosenAudio] = true;
 
-    // Video modulators (scanlines, rgbShift, luminance, or 3d relief)
     const videoChoices: LfoTargetId[] = ['rgbShift', 'scanlines', 'luminance', 'meshDisplacement', 'glitchIntensity'];
     const numVideo = Math.floor(rnd(1, 3));
     const shuffledVideo = [...videoChoices].sort(() => 0.5 - Math.random());
@@ -817,15 +1266,33 @@ export const App: React.FC = () => {
     const audioSlotKeys: AudioParamKey[] = ['reverbWet', 'filterCutoff', 'tapeTone', 'drive', 'wowDepth', 'flutterDepth'];
     const randomAudioTarget = audioSlotKeys[Math.floor(Math.random() * audioSlotKeys.length)];
 
-    const videoSlotKeys: VideoParamKey[] = ['feedback', 'chromaSmear', 'vaporwaveTint', 'crtCurvature', 'noise'];
+    const videoSlotKeys: VideoParamKey[] = ['datamosh', 'feedback', 'chromaSmear', 'vaporwaveTint', 'crtCurvature'];
     const randomVideoTarget = videoSlotKeys[Math.floor(Math.random() * videoSlotKeys.length)];
+
+    // Also generate 2 visual ring routings
+    setModRoutings([
+      {
+        id: `rnd-lfo1-${Date.now()}`,
+        source: 'lfo1',
+        target: 'video.rgbShift',
+        amount: Number(rnd(0.25, 0.45).toFixed(2)),
+        bipolar: true
+      },
+      {
+        id: `rnd-env-${Date.now() + 1}`,
+        source: 'envAudio',
+        target: Math.random() > 0.4 ? 'video.datamosh' : 'video.luminance',
+        amount: Number(rnd(0.25, 0.50).toFixed(2)),
+        bipolar: false
+      }
+    ]);
 
     setLfoConfig({
       enabled: true,
       shape: randomShape,
-      rate: Number(rnd(0.20, 1.10).toFixed(2)),      // Slow, hypnotic, breathing tempo
-      depth: Number(rnd(0.30, 0.58).toFixed(2)),     // Musical depth, never extreme
-      phaseSpread: Number(rnd(0.20, 0.60).toFixed(2)),// Tasteful polyrhythm
+      rate: Number(rnd(0.20, 1.10).toFixed(2)),
+      depth: Number(rnd(0.30, 0.58).toFixed(2)),
+      phaseSpread: Number(rnd(0.20, 0.60).toFixed(2)),
       targets: randomTargets,
       customAudioTarget: randomAudioTarget,
       customAudioEnabled: Math.random() > 0.5,
@@ -835,12 +1302,8 @@ export const App: React.FC = () => {
 
     setVideoParams(randomVideo);
     setAudioParams(randomAudio);
-    if (audioEngineRef.current) {
-      audioEngineRef.current.updateParams(randomAudio);
-    }
   };
 
-  // Synchronize latest action handlers for MIDI Engine dispatch
   actionHandlersRef.current = {
     playToggle: handlePlayToggle,
     tapeFreeze: handleToggleTapeFreeze,
@@ -850,13 +1313,16 @@ export const App: React.FC = () => {
     recordToggle: handleToggleRecord,
     nextTrack: handleNextTrack,
     prevTrack: handlePrevTrack,
-    applyPreset: handleApplyPreset
+    applyPreset: handleApplyPreset,
+    tapTempo: handleTapTempo,
+    lfoToggle: () => setLfoConfig((prev) => ({ ...prev, enabled: !prev.enabled })),
+    vcrOsdToggle: () => setShowVcrOsd((prev) => !prev),
+    changeMorph: handleChangeMorphAmount
   };
 
   // Studio & Live Performance Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Do not trigger shortcuts when user is typing in forms/inputs
       const target = e.target as HTMLElement;
       const tag = target?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) {
@@ -865,43 +1331,46 @@ export const App: React.FC = () => {
 
       const key = e.key.toLowerCase();
 
-      // Space -> Play / Pause
       if (e.code === 'Space') {
         e.preventDefault();
         handlePlayToggle();
-      }
-      // T or F -> Unified Tape Stop & Buffer Freeze
-      else if (key === 't' || key === 'f') {
+      } else if (key === 't' || key === 'f') {
         e.preventDefault();
         handleToggleTapeFreeze();
-      }
-      // R -> RANDOM musical macro
-      else if (key === 'r') {
+      } else if (key === 'r') {
         e.preventDefault();
         handleRandomize();
-      }
-      // L -> Toggle LFO Matrix on/off
-      else if (key === 'l') {
+      } else if (key === 'l') {
         e.preventDefault();
         setLfoConfig((prev) => ({ ...prev, enabled: !prev.enabled }));
-      }
-      // S -> Snapshot HD (if not browser save Ctrl+S / Cmd+S)
-      else if (key === 's' && !e.ctrlKey && !e.metaKey) {
+      } else if (key === 'v') {
+        e.preventDefault();
+        setShowVcrOsd((prev) => !prev);
+      } else if (key === 'b') {
+        e.preventDefault();
+        handleTapTempo();
+      } else if (key === 'd' && !e.repeat) {
+        e.preventDefault();
+        setPunchInFx('datamosh');
+        showToast('💥 PUNCH-IN : DATAMOSH MELT [D]', 'Relâchez la touche D pour revenir au signal normal');
+      } else if (key === 'x' && !e.repeat) {
+        e.preventDefault();
+        setPunchInFx('glitch');
+        showToast('⚡ PUNCH-IN : H-SYNC GLITCH [X]', 'Relâchez la touche X pour revenir au signal normal');
+      } else if (key === 'c' && !e.repeat) {
+        e.preventDefault();
+        setPunchInFx('crush');
+        showToast('🔊 PUNCH-IN : BITCRUSH + RING MOD [C]', 'Relâchez la touche C pour revenir au signal normal');
+      } else if (key === 's' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         handleTakeSnapshot();
-      }
-      // Z -> Zen Mode Toggle
-      else if (key === 'z') {
+      } else if (key === 'z') {
         e.preventDefault();
         setIsZenMode((prev) => !prev);
-      }
-      // Escape -> Exit Zen Mode & Close Drawer
-      else if (e.key === 'Escape') {
+      } else if (e.key === 'Escape') {
         setIsZenMode(false);
         setIsPlaylistOpen(false);
-      }
-      // 1-8 -> Preset Quick Recall
-      else if (e.key >= '1' && e.key <= '8') {
+      } else if (e.key >= '1' && e.key <= '8') {
         const idx = parseInt(e.key, 10) - 1;
         if (PRESETS[idx]) {
           e.preventDefault();
@@ -910,14 +1379,66 @@ export const App: React.FC = () => {
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (key === 'd' || key === 'x' || key === 'c') {
+        setPunchInFx(null);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePlayToggle, handleToggleTapeFreeze, handleRandomize, handleApplyPreset, handleTakeSnapshot]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handlePlayToggle, handleToggleTapeFreeze, handleRandomize, handleApplyPreset, handleTakeSnapshot, handleTapTempo, showToast]);
+
+  // Global Window Drag & Drop for Local Media Files (.mp4, .webm, .mp3) & Presets (.json)
+  const handleWindowDragOver = (e: React.DragEvent) => {
+    // Ignore internal Serum LFO or Preset drags
+    if (
+      e.dataTransfer.types.includes('application/x-circuitbend-mod') ||
+      e.dataTransfer.types.includes('application/x-circuitbend-preset')
+    ) {
+      return;
+    }
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault();
+      if (!isFileDragOver) setIsFileDragOver(true);
+    }
+  };
+
+  const handleWindowDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsFileDragOver(false);
+  };
+
+  const handleWindowDrop = (e: React.DragEvent) => {
+    if (
+      e.dataTransfer.types.includes('application/x-circuitbend-mod') ||
+      e.dataTransfer.types.includes('application/x-circuitbend-preset')
+    ) {
+      return;
+    }
+    e.preventDefault();
+    setIsFileDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleLoadLocalFile(file);
+    }
+  };
 
   const currentTrack = playlist[currentIndex];
+  const displayTitle = localMediaTitle || currentTrack?.title || 'STANDBY - FEED READY';
 
   return (
-    <div className="h-screen w-screen overflow-hidden relative select-none bg-black text-neutral-300">
+    <div
+      onDragOver={handleWindowDragOver}
+      onDragLeave={handleWindowDragLeave}
+      onDrop={handleWindowDrop}
+      className="h-screen w-screen overflow-hidden relative select-none bg-black text-neutral-300"
+    >
       {/* Hidden Native Video Element for decoding frames */}
       <video
         ref={(el) => {
@@ -928,13 +1449,11 @@ export const App: React.FC = () => {
         playsInline
         preload="auto"
         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', opacity: 0.001, zIndex: 0 }}
-        onLoadedData={() => {
-          if (videoRef.current) {
-            console.log('[Video Frame Stream]: Dimensions', videoRef.current.videoWidth, 'x', videoRef.current.videoHeight, 'ReadyState:', videoRef.current.readyState);
-          }
-        }}
         onTimeUpdate={() => {
-          if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+          if (videoRef.current) {
+            const t = videoRef.current.currentTime;
+            setCurrentTime((prev) => (Math.floor(t) !== Math.floor(prev) ? t : prev));
+          }
         }}
         onDurationChange={() => {
           if (videoRef.current) {
@@ -944,25 +1463,31 @@ export const App: React.FC = () => {
             }
           }
         }}
-        onEnded={handleNextTrack}
+        onEnded={() => {
+          if (liveSource === 'youtube') handleNextTrack();
+        }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
       />
 
-      {/* FULLSCREEN IMMERSIVE VIDEO BACKGROUND (Click anywhere to Play/Pause) */}
+      {/* FULLSCREEN IMMERSIVE VIDEO BACKGROUND */}
       <VideoViewport
         videoElement={videoEl || videoRef.current}
-        videoParams={videoParams}
+        videoParams={modulatedVideoParams}
         isPlaying={isPlaying}
         isTapeFreeze={isTapeFreeze}
         audioEngine={audioEngineRef.current}
-        showTimeline={showTimeline}
+        showTimeline={showTimeline && (isRackMinimized || isZenMode)}
+        showVcrOsd={showVcrOsd}
+        onToggleVcrOsd={() => setShowVcrOsd((prev) => !prev)}
+        liveSource={liveSource}
+        bpm={bpm}
         onPlayToggle={handlePlayToggle}
         onNext={handleNextTrack}
         onPrev={handlePrevTrack}
         onToggleTapeFreeze={handleToggleTapeFreeze}
         onCanvasReady={(c) => { canvasRef.current = c; }}
-        title={currentTrack?.title || 'STANDBY - FEED READY'}
+        title={displayTitle}
         duration={duration}
         currentTime={currentTime}
         onSeek={(val) => {
@@ -970,7 +1495,20 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* FLOATING MINIMAL HEADER (Top) - Fades out in Zen Mode */}
+      {/* FULLSCREEN FILE DRAG & DROP OVERLAY */}
+      {isFileDragOver && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md border-4 border-dashed border-cyan-400 flex flex-col items-center justify-center gap-3 pointer-events-none font-mono">
+          <Upload size={48} className="text-cyan-400 animate-bounce" />
+          <div className="text-lg font-bold text-cyan-300 tracking-wider">
+            RELÂCHEZ VOTRE FICHIER POUR LE CIRCUIT-BENDER !
+          </div>
+          <div className="text-xs text-neutral-400">
+            Formats supportés : Vidéo (.MP4, .WEBM, .MOV) • Audio (.MP3, .WAV) • Patch Preset (.JSON)
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING MINIMAL HEADER (Top) */}
       <div className={`absolute top-0 left-0 right-0 z-30 pointer-events-none transition-opacity duration-300 ${isZenMode ? 'opacity-0' : 'opacity-100'}`}>
         <div className="pointer-events-auto">
           <Header
@@ -979,15 +1517,22 @@ export const App: React.FC = () => {
             playlistCount={playlist.length}
             isPlaylistOpen={isPlaylistOpen}
             onTogglePlaylist={() => setIsPlaylistOpen(!isPlaylistOpen)}
+            liveSource={liveSource}
+            onSelectLiveSource={handleSelectLiveSource}
+            onLoadLocalFile={handleLoadLocalFile}
+            onShareUrl={handleSharePatchUrl}
+            shareUrlCopied={shareUrlCopied}
           />
         </div>
       </div>
 
-      {/* FLOATING BOTTOM DOCK: KNOBS, AUDIO VISUALIZER & MASTER (No scroll!) - Fades out in Zen Mode */}
+      {/* FLOATING BOTTOM DOCK: KNOBS, SERUM MATRIX, AUDIO VISUALIZER & MASTER */}
       <div className={`transition-opacity duration-300 ${isZenMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <RackControls
           videoParams={videoParams}
           audioParams={audioParams}
+          modulatedVideoParams={modulatedVideoParams}
+          modulatedAudioParams={modulatedAudioParams}
           activePresetId={activePresetId}
           analyser={audioEngineRef.current ? audioEngineRef.current.getAnalyser() : null}
           isTapeFreeze={isTapeFreeze}
@@ -999,7 +1544,28 @@ export const App: React.FC = () => {
           userPresets={userPresets}
           lfoConfig={lfoConfig}
           onUpdateLfo={(partial) => setLfoConfig((prev) => ({ ...prev, ...partial }))}
+          modRoutings={modRoutings}
+          onDropModSource={handleDropModSource}
+          onUpdateModAmount={handleUpdateModAmount}
+          onToggleModBipolar={handleToggleModBipolar}
+          onRemoveMod={handleRemoveMod}
+          onClearModRoutings={() => setModRoutings([])}
+          liveSourcesRef={liveSourcesRef}
+          macroXY={macroXY}
+          onChangeMacroXY={(x, y) => setMacroXY({ x, y })}
+          xyHold={xyHold}
+          onToggleXyHold={() => setXyHold((prev) => !prev)}
+          bpm={bpm}
+          onChangeBpm={syncLfoToBpm}
+          onTapTempo={handleTapTempo}
+          morphSlotA={morphSlotA}
+          morphSlotB={morphSlotB}
+          morphAmount={morphAmount}
+          onSelectMorphSlotA={setMorphSlotA}
+          onSelectMorphSlotB={setMorphSlotB}
+          onChangeMorphAmount={handleChangeMorphAmount}
           onToggleTimeline={() => setShowTimeline((prev) => !prev)}
+          onMinimizedChange={setIsRackMinimized}
           onToggleTapeFreeze={handleToggleTapeFreeze}
           onToggleRecord={handleToggleRecord}
           onToggleZen={() => setIsZenMode((prev) => !prev)}
@@ -1055,7 +1621,7 @@ export const App: React.FC = () => {
         </button>
       )}
 
-      {/* Live MIDI & Recording Feedback Toast */}
+      {/* Live MIDI, Mod & Recording Feedback Toast */}
       {midiToast && (
         <div className="fixed bottom-14 right-6 z-50 px-4 py-2.5 rounded-lg bg-[#111318]/95 border border-cyan-500/80 shadow-[0_0_20px_rgba(6,182,212,0.4)] backdrop-blur-md animate-in slide-in-from-bottom-2 fade-in duration-150 flex items-center gap-3 font-mono">
           <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />

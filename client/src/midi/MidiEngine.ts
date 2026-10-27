@@ -11,32 +11,32 @@ export interface MidiProfile {
   noteMap: Record<number, MidiTarget>;
 }
 
-// 1. Novation Launch Control Factory Mapping (16 Knobs + 8 Pads)
+// 1. Novation Launch Control Factory Mapping (16 Knobs + 8 Pads + 4 Arrow Buttons)
 export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
   id: 'launch-control',
   name: 'Novation Launch Control',
   ccMap: {
-    // Top Row (Knobs 1 to 8): Factory CC 21 to 28 -> VIDEO
-    21: 'video.glitchIntensity',
-    22: 'video.rgbShift',
-    23: 'video.scanlines',
-    24: 'video.colorBleed',
-    25: 'video.feedback',
-    26: 'video.noise',
-    27: 'video.vaporwaveTint',
-    28: 'video.crtCurvature',
+    // Top Row (Knobs 1 to 8): Factory CC 21 to 28 -> VIDEO & DATAMOSH
+    21: 'video.glitchIntensity', // Knob 1: H-Sync Loss / Glitch
+    22: 'video.rgbShift',        // Knob 2: RGB Channel Shift
+    23: 'video.datamosh',        // Knob 3: Temporal Datamosh Melt
+    24: 'video.feedback',        // Knob 4: Capacitive Feedback Trails
+    25: 'video.colorBleed',      // Knob 5: VHS Color Bleed
+    26: 'video.vaporwaveTint',   // Knob 6: Vaporwave Tint
+    27: 'video.scanlines',       // Knob 7: CRT Scanlines
+    28: 'video.crtCurvature',    // Knob 8: CRT Tube Curvature
 
-    // Bottom Row (Knobs 9 to 16): Factory CC 41 to 48 -> AUDIO
-    41: 'audio.drive',
-    42: 'audio.bitcrush',
-    43: 'audio.filterCutoff',
-    44: 'audio.filterResonance',
-    45: 'audio.tapeSpeed',
-    46: 'audio.wowDepth',
-    47: 'audio.flutterDepth',
-    48: 'audio.reverbWet',
+    // Bottom Row (Knobs 9 to 16): Factory CC 41 to 48 -> AUDIO & MORPH A/B
+    41: 'audio.drive',           // Knob 9: Tape Saturation Drive
+    42: 'audio.bitcrush',        // Knob 10: 8-Bit Lo-Fi Crush
+    43: 'audio.filterCutoff',    // Knob 11: Filter Cutoff (80Hz - 18kHz)
+    44: 'audio.filterResonance', // Knob 12: Filter Resonance (Q)
+    45: 'audio.tapeSpeed',       // Knob 13: Tape Speed & Pitch (0.5x - 1.1x)
+    46: 'audio.wowDepth',        // Knob 14: Wow & Flutter Tape Detune
+    47: 'audio.reverbWet',       // Knob 15: Abandoned Mall Reverb
+    48: 'mod.morphAB',           // Knob 16: Crossfader Morphing (Patch A <-> B)
 
-    // CC Mode for Pads (Novation Launch Control CC 73 to 80 & 114 to 121)
+    // CC Mode for Pads (Novation Launch Control CC 73 to 80)
     73: 'action.playToggle',   // Pad 1: Play / Pause
     74: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
     75: 'action.randomize',    // Pad 3: Randomize / Glitch Macro
@@ -44,16 +44,17 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     77: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot
     78: 'action.recordToggle', // Pad 6: Video Session Record
     79: 'action.preset1',      // Pad 7: Preset Abandoned Mall
-    80: 'action.preset2',      // Pad 8: Preset Broken VHS
+    80: 'action.preset2',      // Pad 8: Preset Damaged VHS Tape
 
-    114: 'action.playToggle',
-    115: 'action.tapeFreeze',
-    116: 'action.randomize',
-    117: 'action.resetClean',
-    118: 'action.snapshot',
+    // 4 Directional Arrow Buttons on the right of Launch Control (CC 114 to 117)
+    114: 'action.tapTempo',    // Flèche Haut (▲): Tap Tempo BPM Sync
+    115: 'action.lfoToggle',   // Flèche Bas (▼): Activer / Désactiver Moteur LFO
+    116: 'action.prevTrack',   // Flèche Gauche (◄): Vidéo Précédente
+    117: 'action.nextTrack',   // Flèche Droite (►): Vidéo Suivante
+    118: 'action.vcrOsdToggle',
     119: 'action.recordToggle',
-    120: 'action.preset1',
-    121: 'action.preset2'
+    120: 'action.preset3',
+    121: 'action.preset4'
   },
   noteMap: {
     // Factory Template 1: Pads 1-4 (Notes 9..12) & Pads 5-8 (Notes 25..28)
@@ -196,7 +197,7 @@ export const GENERIC_PROFILE: MidiProfile = {
   }
 };
 
-const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v7';
+const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v8';
 
 export type MidiDispatchFn = (target: MidiTarget, normalizedValue: number, isTrigger: boolean) => void;
 

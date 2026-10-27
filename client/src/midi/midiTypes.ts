@@ -15,6 +15,7 @@ export type MidiTarget =
   | 'video.chromaSmear'
   | 'video.audioReact'
   | 'video.luminance'
+  | 'video.datamosh'
   // Audio params
   | 'audio.drive'
   | 'audio.bitcrush'
@@ -28,7 +29,16 @@ export type MidiTarget =
   | 'audio.tapeHiss'
   | 'audio.tapeDropouts'
   | 'audio.stutterSpeed'
+  | 'audio.ringModMix'
+  | 'audio.ringModFreq'
   | 'audio.masterVolume'
+  // Modulation & Macro Controls
+  | 'mod.morphAB'
+  | 'mod.macroX'
+  | 'mod.macroY'
+  | 'mod.lfo1Rate'
+  | 'mod.lfo2Rate'
+  | 'mod.lfoDepth'
   // Action triggers
   | 'action.playToggle'
   | 'action.tapeFreeze'
@@ -36,10 +46,14 @@ export type MidiTarget =
   | 'action.resetClean'
   | 'action.snapshot'
   | 'action.recordToggle'
+  | 'action.tapTempo'
+  | 'action.lfoToggle'
+  | 'action.vcrOsdToggle'
   | 'action.preset0'
   | 'action.preset1'
   | 'action.preset2'
   | 'action.preset3'
+  | 'action.preset4'
   | 'action.nextTrack'
   | 'action.prevTrack';
 
@@ -53,19 +67,23 @@ export interface MidiTargetMetadata {
 }
 
 export const MIDI_TARGET_CATALOG: MidiTargetMetadata[] = [
-  // Video
-  { id: 'video.glitchIntensity', label: 'Glitch Intensity (Tearing)', category: 'video', min: 0, max: 1 },
+  // Video (Ordered to match Launch Control Top Row K1-K8 first)
+  { id: 'video.glitchIntensity', label: 'H-Sync Loss / Glitch (Tearing)', category: 'video', min: 0, max: 1 },
   { id: 'video.rgbShift', label: 'RGB Channel Shift', category: 'video', min: 0, max: 1 },
-  { id: 'video.scanlines', label: 'CRT Scanlines', category: 'video', min: 0, max: 1 },
-  { id: 'video.colorBleed', label: 'Color Bleed & Phase', category: 'video', min: 0, max: 1 },
+  { id: 'video.datamosh', label: 'Datamosh Melt (Fusion Temporelle)', category: 'video', min: 0, max: 1 },
   { id: 'video.feedback', label: 'Capacitive Feedback Trails', category: 'video', min: 0, max: 1 },
-  { id: 'video.noise', label: 'Analog RF Noise', category: 'video', min: 0, max: 1 },
+  { id: 'video.colorBleed', label: 'Color Bleed & Phase', category: 'video', min: 0, max: 1 },
   { id: 'video.vaporwaveTint', label: 'Vaporwave Pastel Tint', category: 'video', min: 0, max: 1 },
+  { id: 'video.scanlines', label: 'CRT Scanlines', category: 'video', min: 0, max: 1 },
   { id: 'video.crtCurvature', label: 'CRT Screen Curvature', category: 'video', min: 0, max: 1 },
   { id: 'video.meshDisplacement', label: '3D Topography Mesh', category: 'video', min: 0, max: 1 },
   { id: 'video.chromaSmear', label: 'Chroma Beam Smear', category: 'video', min: 0, max: 1 },
-  { id: 'video.luminance', label: 'Luma Solarization', category: 'video', min: 0, max: 1 },
-  { id: 'video.audioReact', label: 'Audio-Reactive Glitch', category: 'video', min: 0, max: 1 },
+  { id: 'video.luminance', label: 'Luminance & Solarization', category: 'video', min: 0, max: 1 },
+  { id: 'video.apertureGrille', label: 'Phosphor Mask (Aperture Grille)', category: 'video', min: 0, max: 1 },
+  { id: 'video.vhsHeadSwitching', label: 'VHS Head Switching Noise', category: 'video', min: 0, max: 1 },
+  { id: 'video.vHoldDrift', label: 'V-Hold Vertical Drift', category: 'video', min: 0, max: 1 },
+  { id: 'video.noise', label: 'Analog RF Noise', category: 'video', min: 0, max: 1 },
+  { id: 'video.audioReact', label: 'Sidechain Kick Audio-React', category: 'video', min: 0, max: 1 },
 
   // Audio
   { id: 'audio.drive', label: 'Tape Saturation / Overdrive', category: 'audio', min: 0, max: 1 },
@@ -80,7 +98,17 @@ export const MIDI_TARGET_CATALOG: MidiTargetMetadata[] = [
   { id: 'audio.tapeHiss', label: 'Brownian Tape Hiss Floor', category: 'audio', min: 0, max: 1 },
   { id: 'audio.tapeDropouts', label: 'Tape Micro-Dropouts', category: 'audio', min: 0, max: 1 },
   { id: 'audio.stutterSpeed', label: 'Freeze Slice Speed', category: 'audio', min: 0.05, max: 0.35 },
+  { id: 'audio.ringModMix', label: 'Ring Modulator Mix', category: 'audio', min: 0, max: 1 },
+  { id: 'audio.ringModFreq', label: 'Ring Modulator Frequency (30Hz - 1200Hz)', category: 'audio', min: 30, max: 1200 },
   { id: 'audio.masterVolume', label: 'Master Output Volume', category: 'audio', min: 0, max: 1 },
+
+  // Modulation & Performance Macros
+  { id: 'mod.morphAB', label: 'Crossfader Morph A ↔ B', category: 'video', min: 0, max: 1 },
+  { id: 'mod.macroX', label: 'Vector Pad X (Macro X)', category: 'video', min: 0, max: 1 },
+  { id: 'mod.macroY', label: 'Vector Pad Y (Macro Y)', category: 'video', min: 0, max: 1 },
+  { id: 'mod.lfo1Rate', label: 'LFO 1 Speed (0.1Hz - 12Hz)', category: 'audio', min: 0.1, max: 12 },
+  { id: 'mod.lfo2Rate', label: 'LFO 2 Speed (0.1Hz - 12Hz)', category: 'audio', min: 0.1, max: 12 },
+  { id: 'mod.lfoDepth', label: 'LFO Global Depth (0% - 100%)', category: 'audio', min: 0, max: 1 },
 
   // Actions
   { id: 'action.playToggle', label: 'Play / Pause Stream (Space)', category: 'action' },
@@ -88,13 +116,17 @@ export const MIDI_TARGET_CATALOG: MidiTargetMetadata[] = [
   { id: 'action.randomize', label: 'Randomize Parameters / Glitch Chaos (Key R)', category: 'action' },
   { id: 'action.resetClean', label: 'RESET CLEAN // Bypass All FX (Panic Dry)', category: 'action' },
   { id: 'action.snapshot', label: 'Capture Photo Instantanée CRT (Key S)', category: 'action' },
-  { id: 'action.recordToggle', label: 'Enregistrement Vidéo Session (Record WebM)', category: 'action' },
+  { id: 'action.recordToggle', label: 'Enregistrement Vidéo Session (Record MP4)', category: 'action' },
+  { id: 'action.tapTempo', label: 'Tap Tempo BPM Sync (Key B / Flèche ▲)', category: 'action' },
+  { id: 'action.lfoToggle', label: 'Activer / Désactiver Moteur LFO (Flèche ▼)', category: 'action' },
+  { id: 'action.vcrOsdToggle', label: 'Afficher / Masquer VCR OSD 1994 (Key V)', category: 'action' },
   { id: 'action.preset0', label: 'Preset: Direct Bypass (Clean)', category: 'action' },
   { id: 'action.preset1', label: 'Preset: 1984 Abandoned Mall', category: 'action' },
-  { id: 'action.preset2', label: 'Preset: Broken VHS VCR', category: 'action' },
-  { id: 'action.preset3', label: 'Preset: Cyberpunk CRT Arcade', category: 'action' },
-  { id: 'action.nextTrack', label: 'Next Playlist Video (Optional)', category: 'action' },
-  { id: 'action.prevTrack', label: 'Previous Playlist Video (Optional)', category: 'action' }
+  { id: 'action.preset2', label: 'Preset: Damaged VHS Tape', category: 'action' },
+  { id: 'action.preset3', label: 'Preset: Nightwave Slowed', category: 'action' },
+  { id: 'action.preset4', label: 'Preset: Fried 8-Bit Console', category: 'action' },
+  { id: 'action.nextTrack', label: 'Vidéo Suivante Playlist (Flèche ►)', category: 'action' },
+  { id: 'action.prevTrack', label: 'Vidéo Précédente Playlist (Flèche ◄)', category: 'action' }
 ];
 
 export interface MidiActivityEvent {

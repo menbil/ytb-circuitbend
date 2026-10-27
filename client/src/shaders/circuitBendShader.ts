@@ -1,5 +1,108 @@
 import * as THREE from 'three';
 
+/**
+ * Dedicated Temporal Ping-Pong Datamosh Shader (True P-Frame Optical Flow Advection)
+ * Accumulates previous frames in a GPU render target and advects (melts) trapped pixels
+ * along the real spatial-temporal motion vectors of the incoming video stream.
+ */
+export const DatamoshShader = {
+  uniforms: {
+    tVideo: { value: null as THREE.Texture | null },
+    tPrevMosh: { value: null as THREE.Texture | null },
+    uDatamosh: { value: 0.0 },
+    uResolution: { value: new THREE.Vector2(1280, 720) },
+    uTime: { value: 0.0 }
+  },
+
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position.xy, 0.0, 1.0);
+    }
+  `,
+
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tVideo;
+    uniform sampler2D tPrevMosh;
+    uniform float uDatamosh;
+    uniform vec2 uResolution;
+    uniform float uTime;
+
+    varying vec2 vUv;
+
+    float getLuma(vec3 c) {
+      return dot(c, vec3(0.299, 0.587, 0.114));
+    }
+
+    void main() {
+      vec4 curr = texture2D(tVideo, vUv);
+
+      // Pure 1:1 pass-through when datamosh is off (seeds the history buffer cleanly)
+      if (uDatamosh <= 0.001) {
+        gl_FragColor = curr;
+        return;
+      }
+
+      // Compute multi-scale Lucas-Kanade Optical Flow between current video and trapped buffer
+      vec2 texel = 1.0 / max(uResolution, vec2(640.0, 360.0));
+      vec2 step1 = texel * 3.0;
+      vec2 step2 = texel * 9.0;
+
+      // Cohesive motion sampling so entire moving silhouettes push pixels smoothly
+      float lCurr = getLuma(curr.rgb);
+      float lPrev = getLuma(texture2D(tPrevMosh, vUv).rgb);
+
+      // Spatial gradients (fine + macro average for fluid, organic motion vectors)
+      float ix1 = getLuma(texture2D(tVideo, vUv + vec2(step1.x, 0.0)).rgb) -
+                  getLuma(texture2D(tVideo, vUv - vec2(step1.x, 0.0)).rgb);
+      float iy1 = getLuma(texture2D(tVideo, vUv + vec2(0.0, step1.y)).rgb) -
+                  getLuma(texture2D(tVideo, vUv - vec2(0.0, step1.y)).rgb);
+
+      float ix2 = getLuma(texture2D(tVideo, vUv + vec2(step2.x, 0.0)).rgb) -
+                  getLuma(texture2D(tVideo, vUv - vec2(step2.x, 0.0)).rgb);
+      float iy2 = getLuma(texture2D(tVideo, vUv + vec2(0.0, step2.y)).rgb) -
+                  getLuma(texture2D(tVideo, vUv - vec2(0.0, step2.y)).rgb);
+
+      float ix = ix1 * 0.45 + ix2 * 0.55;
+      float iy = iy1 * 0.45 + iy2 * 0.55;
+
+      // Temporal derivative between incoming frame and trapped buffer
+      float it = lCurr - lPrev;
+
+      // Optical flow velocity vector: v = -It * (Ix, Iy) / (Ix^2 + Iy^2 + eps)
+      float denom = ix * ix + iy * iy + 0.012;
+      vec2 flow = (-it / denom) * vec2(ix, iy);
+
+      // Clamp maximum per-frame advection step for silky liquid pixel dragging
+      float maxStep = 0.032 * (0.4 + uDatamosh * 0.8);
+      flow = clamp(flow, vec2(-maxStep), vec2(maxStep));
+
+      // Subtle downward gravity melt when pixels are actively pushed by motion
+      float motionEnergy = smoothstep(0.015, 0.28, abs(it));
+      vec2 gravityMelt = vec2(0.0, -0.0018 * uDatamosh * motionEnergy);
+
+      // Advect the trapped previous frame along the motion vector
+      vec2 advectedUv = clamp(vUv + flow * (0.45 + uDatamosh * 0.85) + gravityMelt, 0.001, 0.999);
+      vec4 advectedPrev = texture2D(tPrevMosh, advectedUv);
+
+      // Slight YUV chroma separation inside the melted wake (authentic codec P-frame tear)
+      vec2 chromaUv = clamp(advectedUv + flow * 0.35, 0.001, 0.999);
+      vec3 advectedChroma = texture2D(tPrevMosh, chromaUv).rgb;
+      vec3 meltedColor = vec3(advectedPrev.r, advectedPrev.g, mix(advectedPrev.b, advectedChroma.b, 0.5));
+
+      // I-Frame suppression: higher uDatamosh locks the trapped frame longer (up to 99.2% retention)
+      // New video pixels only bleed in slightly where strong motion pushes through
+      float holdFactor = mix(0.78, 0.992, pow(clamp(uDatamosh, 0.0, 1.0), 0.45));
+      float residualBleed = (1.0 - holdFactor) + motionEnergy * (1.0 - uDatamosh * 0.82) * 0.14;
+      residualBleed = clamp(residualBleed, 0.008, 1.0);
+
+      vec3 finalMosh = mix(meltedColor, curr.rgb, residualBleed);
+      gl_FragColor = vec4(clamp(finalMosh, 0.0, 1.0), 1.0);
+    }
+  `
+};
+
 export const CircuitBendShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
@@ -26,7 +129,8 @@ export const CircuitBendShader = {
     uChromaSmear: { value: 0.0 },
     uAudioReact: { value: 0.0 },
     uAudioBass: { value: 0.0 },
-    uLuminance: { value: 0.0 }
+    uLuminance: { value: 0.0 },
+    uDatamosh: { value: 0.0 }
   },
 
   vertexShader: /* glsl */ `
@@ -64,6 +168,7 @@ export const CircuitBendShader = {
     uniform float uAudioBass;
     uniform float uLuminance;
     uniform float uMeshDisplacement;
+    uniform float uDatamosh;
 
     varying vec2 vUv;
 
@@ -169,16 +274,11 @@ export const CircuitBendShader = {
 
       // 7. VAPORWAVE PASTEL COLOR GRADING & NTSC LIFT (uVaporwaveTint)
       if (uVaporwaveTint > 0.01) {
-        // Vaporwave signature tones: Fuchsia #FF71CE & Cyan #01CDFE
         vec3 fuchsia = vec3(1.0, 0.443, 0.808);
         vec3 neonCyan = vec3(0.004, 0.804, 0.996);
 
         float luma = dot(baseColor.rgb, vec3(0.299, 0.587, 0.114));
-        
-        // Tone split: shadows to purple/fuchsia, highlights to warm cyan
         vec3 vaporGrade = mix(fuchsia * luma * 1.1, neonCyan * (1.0 - luma * 0.4) + baseColor.rgb * 0.6, luma);
-        
-        // Lifted nostalgic blacks (faded magnetic tape look)
         vec3 liftedBlacks = vec3(0.05, 0.02, 0.08) * uVaporwaveTint;
         vaporGrade += liftedBlacks;
 
@@ -233,12 +333,10 @@ export const CircuitBendShader = {
       if (uLuminance > 0.01) {
         float luma = dot(baseColor.rgb, vec3(0.299, 0.587, 0.114));
         
-        // Creamy optical highlight bloom & contrast lift
         vec3 lumaBoost = baseColor.rgb * (1.0 + uLuminance * 1.8);
         float highlightBloom = smoothstep(0.45, 0.95, luma) * uLuminance * 0.45;
         lumaBoost += vec3(highlightBloom * 1.1, highlightBloom * 0.95, highlightBloom * 1.25);
         
-        // Solarize effect: smooth analog solarization on extreme peaks only
         if (uLuminance > 0.45) {
           float solarThresh = 1.35 - (uLuminance - 0.45) * 0.6;
           if (luma > solarThresh) {
@@ -256,14 +354,11 @@ export const CircuitBendShader = {
         float l1 = dot(s1.rgb, vec3(0.299, 0.587, 0.114));
         float l2 = dot(s2.rgb, vec3(0.299, 0.587, 0.114));
         
-        // Directional emboss gradient
         float reliefDiff = (l1 - l2) * 3.5 * uMeshDisplacement;
         
-        // Subtle Rutt-Etra / video-synth contour isolines
         float luma = dot(baseColor.rgb, vec3(0.299, 0.587, 0.114));
         float contour = sin((luma + reliefDiff * 0.3) * 34.0 - uTime * 1.5) * 0.5 + 0.5;
         
-        // Blend directional bevel highlight & soft shadow
         vec3 reliefColor = vec3(reliefDiff * 0.85);
         vec3 contourGlow = vec3(0.12, 0.65, 1.0) * contour * (uMeshDisplacement * 0.35);
         baseColor.rgb += reliefColor + contourGlow;

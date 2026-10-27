@@ -5,6 +5,7 @@ export interface PlaylistItem {
   thumbnail: string;
   streamUrl: string;
   author?: string;
+  isLocal?: boolean;
 }
 
 export interface VideoBendingParams {
@@ -28,6 +29,7 @@ export interface VideoBendingParams {
   chromaSmear: number;       // 0.0 -> 1.0 (beam bleed & composite RCA horizontal smear)
   audioReact: number;        // 0.0 -> 1.0 (sidechain audio bass energy to glitch & pulse)
   luminance: number;         // 0.0 -> 1.0 (luma overdrive, solarization & contrast bending)
+  datamosh?: number;         // 0.0 -> 1.0 (macro-block datamosh & luma pixel sort melt)
 }
 
 export interface AudioBendingParams {
@@ -53,6 +55,10 @@ export interface AudioBendingParams {
   tapeDropouts: number;      // 0.0 -> 1.0 (tape creases & random micro-cut dropouts)
   stutterSpeed: number;      // 0.05s -> 0.35s (freeze loop slice duration)
 
+  // Circuit-Bent Ring Modulator
+  ringModMix?: number;       // 0.0 -> 1.0 (Ring modulator dry/wet mix)
+  ringModFreq?: number;      // 30Hz -> 1200Hz (Ring modulator carrier frequency)
+
   // Master
   masterVolume: number;      // 0.0 -> 1.0
   isMuted: boolean;
@@ -75,9 +81,10 @@ export interface UserPreset {
   video: VideoBendingParams;
   audio: AudioBendingParams;
   lfo?: LfoConfig;
+  modMatrix?: ModRouting[];
 }
 
-export type LfoShape = 'sine' | 'triangle' | 'saw' | 'sawDown' | 'square' | 'random' | 'drift';
+export type LfoShape = 'sine' | 'triangle' | 'saw' | 'sawDown' | 'square' | 'random' | 'drift' | 'custom';
 
 export type VideoParamKey = keyof VideoBendingParams;
 export type AudioParamKey = keyof Omit<AudioBendingParams, 'filterType' | 'isMuted' | 'pitchLock'>;
@@ -94,6 +101,37 @@ export type LfoTargetId =
   | 'luminance' 
   | 'colorBleed';
 
+// Serum-style Modulation Sources & Curve Nodes
+export type ModSourceId = 'lfo1' | 'lfo2' | 'envAudio' | 'macroX' | 'macroY';
+
+export type ModTargetPath = `video.${VideoParamKey}` | `audio.${AudioParamKey}`;
+
+export type BpmSyncDivision = 'free' | '1/1' | '1/2' | '1/4' | '1/8' | '1/16';
+
+export interface MsegPoint {
+  x: number;     // 0.0 -> 1.0 phase
+  y: number;     // 0.0 -> 1.0 amplitude
+  tension?: number; // -1.0 -> 1.0 curve tension
+}
+
+export interface SerumLfoUnit {
+  id: 'lfo1' | 'lfo2';
+  enabled: boolean;
+  shape: LfoShape;
+  rate: number;                // 0.1Hz -> 12.0Hz
+  syncDivision: BpmSyncDivision;
+  smooth: number;              // 0.0 -> 1.0 smoothing
+  points: MsegPoint[];         // Interactive Serum MSEG curve nodes
+}
+
+export interface ModRouting {
+  id: string;
+  source: ModSourceId;
+  target: ModTargetPath;
+  amount: number;              // -1.0 -> +1.0 (percentage of target parameter range)
+  bipolar: boolean;            // true = oscillates around knob value, false = adds upward/downward from knob
+}
+
 export interface LfoConfig {
   enabled: boolean;
   shape: LfoShape;
@@ -105,4 +143,12 @@ export interface LfoConfig {
   customAudioEnabled: boolean;
   customVideoTarget: VideoParamKey;      // Freely selectable Video target slot
   customVideoEnabled: boolean;
+
+  // Extended Serum Matrix & Clock
+  bpm?: number;
+  lfo1?: SerumLfoUnit;
+  lfo2?: SerumLfoUnit;
+  routings?: ModRouting[];
 }
+
+export type LiveInputSource = 'youtube' | 'webcam' | 'screen' | 'local';

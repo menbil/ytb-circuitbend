@@ -11,6 +11,12 @@ export class AudioCircuitEngine {
   private driveNode: WaveShaperNode | null = null;
   private filterNode: BiquadFilterNode | null = null;
 
+  // Ring Modulator (Casio / Speak & Spell Circuit Bend)
+  private ringModOsc: OscillatorNode | null = null;
+  private ringModVca: GainNode | null = null;
+  private ringModDryGain: GainNode | null = null;
+  private ringModWetGain: GainNode | null = null;
+
   // Wow & Flutter (Dual LFO Tape Deck)
   private delayNode: DelayNode | null = null;
   private wowLfo: OscillatorNode | null = null;
@@ -144,6 +150,21 @@ export class AudioCircuitEngine {
       this.driveNode = this.ctx.createWaveShaper();
       this.driveNode.oversample = '4x';
 
+      // 1.5 Ring Modulator (Audio-rate carrier multiplication)
+      this.ringModOsc = this.ctx.createOscillator();
+      this.ringModOsc.type = 'sine';
+      this.ringModOsc.frequency.setValueAtTime(180, this.ctx.currentTime);
+
+      this.ringModVca = this.ctx.createGain();
+      this.ringModVca.gain.setValueAtTime(0.0, this.ctx.currentTime);
+      this.ringModOsc.connect(this.ringModVca.gain);
+      this.ringModOsc.start();
+
+      this.ringModDryGain = this.ctx.createGain();
+      this.ringModDryGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      this.ringModWetGain = this.ctx.createGain();
+      this.ringModWetGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+
       // 2. Resonant Synth Filter
       this.filterNode = this.ctx.createBiquadFilter();
       this.filterNode.type = 'lowpass';
@@ -271,9 +292,14 @@ export class AudioCircuitEngine {
       this.stutterDelayNode.connect(this.stutterWetGain);
       this.stutterWetGain.connect(this.bitcrusherNode);
 
-      // B. Circuit Distortion & Filters
+      // B. Circuit Distortion, Ring Modulator & Filters
       this.bitcrusherNode.connect(this.driveNode);
-      this.driveNode.connect(this.filterNode);
+      this.driveNode.connect(this.ringModDryGain);
+      this.driveNode.connect(this.ringModVca);
+      this.ringModVca.connect(this.ringModWetGain);
+
+      this.ringModDryGain.connect(this.filterNode);
+      this.ringModWetGain.connect(this.filterNode);
       this.filterNode.connect(this.headBumpFilter);
       this.headBumpFilter.connect(this.tapeHfFilter);
       this.tapeHfFilter.connect(this.tapeLfFilter);
@@ -343,33 +369,57 @@ export class AudioCircuitEngine {
 
   private lastBass: number = 0;
   private kickEnvelope: number = 0;
+  private lastAnalysisTime: number = 0;
+  private runningPeak: number = 0.25;
 
   public getBassEnergy(): number {
     if (!this.analyserNode) return 0;
+
+    // Cache per animation frame (~8ms) so multiple callers (VideoViewport + App Mod Matrix)
+    // never double-decay the envelope or cancel out transient delta detection
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - this.lastAnalysisTime < 8) {
+      return this.kickEnvelope;
+    }
+    this.lastAnalysisTime = now;
+
     if (!this.freqData) {
       this.freqData = new Uint8Array(this.analyserNode.frequencyBinCount);
     }
     this.analyserNode.getByteFrequencyData(this.freqData as any);
     
-    // Sub-bass and Kick frequency bins (~40Hz to 160Hz)
+    // Sub-bass, Kick & Low-Mid punch bins (~20Hz to 350Hz)
+    const b0 = this.freqData[0] || 0;
     const b1 = this.freqData[1] || 0;
     const b2 = this.freqData[2] || 0;
     const b3 = this.freqData[3] || 0;
-    const rawBass = (b1 * 1.6 + b2 * 1.3 + b3 * 0.9) / (3.8 * 255);
+    const b4 = this.freqData[4] || 0;
+    const rawEnergy = (b0 * 1.4 + b1 * 1.8 + b2 * 1.5 + b3 * 1.1 + b4 * 0.8) / (6.6 * 255);
 
-    // Instant attack transient detection
-    const delta = Math.max(0, rawBass - this.lastBass);
-    this.lastBass = rawBass * 0.65 + this.lastBass * 0.35;
-
-    // Pump envelope on sudden energy rise
-    if (delta > 0.04 || rawBass > 0.55) {
-      this.kickEnvelope = Math.min(1.0, this.kickEnvelope + delta * 4.0 + rawBass * 0.45);
+    // Auto-gain peak tracker so quiet and loud tracks both trigger full 0..1 modulation
+    if (rawEnergy > this.runningPeak) {
+      this.runningPeak = rawEnergy;
     } else {
-      // Fast exponential decay for punchy kick release (~90ms)
-      this.kickEnvelope *= 0.84;
+      this.runningPeak = Math.max(0.15, this.runningPeak * 0.995);
     }
 
-    return Math.min(1.0, this.kickEnvelope);
+    const normalizedBass = Math.min(1.0, rawEnergy / this.runningPeak);
+
+    // Instant transient detection (kick / snare attacks)
+    const delta = Math.max(0, normalizedBass - this.lastBass);
+    this.lastBass = normalizedBass * 0.55 + this.lastBass * 0.45;
+
+    // Responsive envelope follower: fast attack on transients + continuous level tracking
+    const targetEnv = Math.min(1.0, Math.pow(normalizedBass, 1.4) * 0.75 + delta * 3.8);
+    if (targetEnv > this.kickEnvelope) {
+      // Fast attack
+      this.kickEnvelope += (targetEnv - this.kickEnvelope) * 0.65;
+    } else {
+      // Musical release (~120ms)
+      this.kickEnvelope += (targetEnv - this.kickEnvelope) * 0.18;
+    }
+
+    return Math.max(0.0, Math.min(1.0, this.kickEnvelope));
   }
 
   public isStopped(): boolean {
@@ -416,11 +466,7 @@ export class AudioCircuitEngine {
   }
 
   /**
-   * Toggles Unified Tape Stop & Buffer Freeze:
-   * - BRAKE & FREEZE: Progressively decelerates playback speed & pitch down with tape inertia.
-   *   Seamlessly engages granular freeze / buffer stutter so the audio locks into
-   *   a repeating tape slice and the video frame freezes, while CRT / glitch shaders continue pulsing.
-   * - RESUME: Releases the freeze loop and accelerates the tape deck back to nominal speed & pitch.
+   * Toggles Unified Tape Stop & Buffer Freeze
    */
   public toggleTapeFreeze(
     nominalRate: number = 1.0,
@@ -508,10 +554,6 @@ export class AudioCircuitEngine {
     this.bitcrusherNode.curve = computeBitcrushCurve(amount) as any;
   }
 
-  /**
-   * Generates ultra-smooth analog saturation / soft-clipping curve
-   * Normalizes output gain so the volume never jumps abruptly
-   */
   private updateDriveCurve(amount: number) {
     if (!this.driveNode) return;
     if (Math.abs(amount - this.lastDrive) < 0.005) return;
@@ -525,7 +567,6 @@ export class AudioCircuitEngine {
 
     // 1. Playback Speed & Pitch Lock vs Detune
     if (this.connectedElement && !this.isTapeStopped) {
-      // If pitchLock is true, preserve pitch; otherwise disable preservation for analog detune
       this.applyPitchPreservation(params.pitchLock === true);
 
       const safeSpeed = Math.max(0.4, Math.min(1.5, params.tapeSpeed || 1.0));
@@ -538,6 +579,15 @@ export class AudioCircuitEngine {
     this.updateBitcrushCurve(params.bitcrush);
     this.updateDriveCurve(params.drive);
 
+    // 2.5 Ring Modulator (Casio / Robotic Carrier)
+    if (this.ringModOsc && this.ringModDryGain && this.ringModWetGain) {
+      const rmMix = Math.max(0, Math.min(1, params.ringModMix ?? 0.0));
+      const rmFreq = Math.max(20, Math.min(2000, params.ringModFreq ?? 180));
+      this.ringModOsc.frequency.setTargetAtTime(rmFreq, t, 0.02);
+      this.ringModWetGain.gain.setTargetAtTime(rmMix * 0.85, t, 0.02);
+      this.ringModDryGain.gain.setTargetAtTime(1.0 - rmMix * 0.65, t, 0.02);
+    }
+
     // 3. Resonant Filter
     if (this.filterNode) {
       if (this.filterNode.type !== params.filterType) this.filterNode.type = params.filterType;
@@ -547,9 +597,8 @@ export class AudioCircuitEngine {
 
     // 4. Tape Tone (Ferric EQ Head Bump)
     if (this.headBumpFilter && this.tapeHfFilter) {
-      const bumpGain = params.tapeTone * 5.5; // +5.5 dB at 90Hz
+      const bumpGain = params.tapeTone * 5.5;
       this.headBumpFilter.gain.setTargetAtTime(bumpGain, t, 0.03);
-      // HF rolloff from 18kHz down to 9kHz when tapeTone is max
       const hfCut = 18000 - params.tapeTone * 9000;
       this.tapeHfFilter.frequency.setTargetAtTime(hfCut, t, 0.03);
     }
@@ -557,11 +606,9 @@ export class AudioCircuitEngine {
     // 5. Dual Wow & Flutter Delays
     if (this.wowLfo && this.wowGain && this.flutterLfo && this.flutterGain && this.delayNode && this.tapeWetGain) {
       this.wowLfo.frequency.setTargetAtTime(Math.max(0.2, params.wowRate), t, 0.03);
-      // Wow amplitude up to 0.012s
       this.wowGain.gain.setTargetAtTime(params.wowDepth * 0.012, t, 0.03);
 
       this.flutterLfo.frequency.setTargetAtTime(Math.max(3.0, params.flutterRate), t, 0.03);
-      // Flutter fast vibration amplitude up to 0.003s
       this.flutterGain.gain.setTargetAtTime(params.flutterDepth * 0.0035, t, 0.03);
 
       const baseDelay = Math.max(0.005, params.delayTime || 0.03);
@@ -581,12 +628,11 @@ export class AudioCircuitEngine {
 
     // 7. Subtle Tape Hiss
     if (this.hissGain) {
-      // Gentle subtle level (never deafening white noise)
       const hissLevel = Math.max(0, Math.min(1, params.tapeHiss)) * 0.022;
       this.hissGain.gain.setTargetAtTime(hissLevel, t, 0.03);
     }
 
-    // 7.5 Tape Dropouts (Random micro-cuts & tape crease artifacts)
+    // 7.5 Tape Dropouts
     if (this.dropoutGain && params.tapeDropouts !== undefined) {
       if (params.tapeDropouts > 0.04) {
         if (!this.dropoutInterval) {
@@ -623,6 +669,7 @@ export class AudioCircuitEngine {
         clearInterval(this.dropoutInterval);
         this.dropoutInterval = null;
       }
+      if (this.ringModOsc) this.ringModOsc.stop();
       if (this.wowLfo) this.wowLfo.stop();
       if (this.flutterLfo) this.flutterLfo.stop();
       if (this.hissSource) this.hissSource.stop();

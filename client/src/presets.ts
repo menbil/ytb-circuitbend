@@ -21,7 +21,8 @@ export const PRESETS: Preset[] = [
       meshDisplacement: 0.0,
       chromaSmear: 0.0,
       audioReact: 0.0,
-      luminance: 0.0
+      luminance: 0.0,
+      datamosh: 0.0
     },
     audio: {
       bitcrush: 0.0,
@@ -40,6 +41,8 @@ export const PRESETS: Preset[] = [
       tapeHiss: 0.0,
       tapeDropouts: 0.0,
       stutterSpeed: 0.12,
+      ringModMix: 0.0,
+      ringModFreq: 180,
       masterVolume: 0.85,
       isMuted: false,
       pitchLock: false
@@ -65,7 +68,8 @@ export const PRESETS: Preset[] = [
       meshDisplacement: 0.15,
       chromaSmear: 0.25,
       audioReact: 0.35,
-      luminance: 0.25
+      luminance: 0.25,
+      datamosh: 0.0
     },
     audio: {
       bitcrush: 0.0,
@@ -84,6 +88,8 @@ export const PRESETS: Preset[] = [
       tapeHiss: 0.02,
       tapeDropouts: 0.05,
       stutterSpeed: 0.18,
+      ringModMix: 0.0,
+      ringModFreq: 140,
       masterVolume: 0.85,
       isMuted: false,
       pitchLock: false
@@ -109,7 +115,8 @@ export const PRESETS: Preset[] = [
       meshDisplacement: 0.30,
       chromaSmear: 0.65,
       audioReact: 0.50,
-      luminance: 0.45
+      luminance: 0.45,
+      datamosh: 0.0
     },
     audio: {
       bitcrush: 0.08,
@@ -128,6 +135,8 @@ export const PRESETS: Preset[] = [
       tapeHiss: 0.10,
       tapeDropouts: 0.40,
       stutterSpeed: 0.10,
+      ringModMix: 0.0,
+      ringModFreq: 220,
       masterVolume: 0.85,
       isMuted: false,
       pitchLock: false
@@ -153,7 +162,8 @@ export const PRESETS: Preset[] = [
       meshDisplacement: 0.20,
       chromaSmear: 0.30,
       audioReact: 0.60,
-      luminance: 0.30
+      luminance: 0.30,
+      datamosh: 0.0
     },
     audio: {
       bitcrush: 0.0,
@@ -172,6 +182,8 @@ export const PRESETS: Preset[] = [
       tapeHiss: 0.02,
       tapeDropouts: 0.10,
       stutterSpeed: 0.25,
+      ringModMix: 0.0,
+      ringModFreq: 110,
       masterVolume: 0.85,
       isMuted: false,
       pitchLock: false
@@ -197,7 +209,8 @@ export const PRESETS: Preset[] = [
       meshDisplacement: 0.70,
       chromaSmear: 0.80,
       audioReact: 0.85,
-      luminance: 0.75
+      luminance: 0.75,
+      datamosh: 0.0
     },
     audio: {
       bitcrush: 0.88,
@@ -216,6 +229,8 @@ export const PRESETS: Preset[] = [
       tapeHiss: 0.0,
       tapeDropouts: 0.25,
       stutterSpeed: 0.06,
+      ringModMix: 0.45,
+      ringModFreq: 320,
       masterVolume: 0.75,
       isMuted: false,
       pitchLock: true
