@@ -107,6 +107,10 @@ export const App: React.FC = () => {
     nextTrack?: () => void;
     prevTrack?: () => void;
     applyPreset?: (p: Preset) => void;
+    tapTempo?: () => void;
+    lfoToggle?: () => void;
+    vcrOsdToggle?: () => void;
+    changeMorph?: (t: number) => void;
   }>({});
 
   // Base Preset & Parameter States (User-controlled knob positions)
@@ -238,21 +242,28 @@ export const App: React.FC = () => {
   // Synchronize LFO1 & LFO2 rates when BPM changes or Tap Tempo is triggered
   const syncLfoToBpm = useCallback((nextBpm: number) => {
     setBpm(nextBpm);
-    setLfoConfig((prev) => {
+    setLfoConfig((prev): LfoConfig => {
       const l1Div: BpmSyncDivision = prev.lfo1?.syncDivision && prev.lfo1.syncDivision !== 'free' ? prev.lfo1.syncDivision : '1/4';
       const l2Div: BpmSyncDivision = prev.lfo2?.syncDivision && prev.lfo2.syncDivision !== 'free' ? prev.lfo2.syncDivision : '1/2';
       const l1Hz = getEffectiveLfoRateHz(l1Div, prev.lfo1?.rate ?? prev.rate, nextBpm);
       const l2Hz = getEffectiveLfoRateHz(l2Div, prev.lfo2?.rate ?? prev.rate * 1.5, nextBpm);
+      const defaultPts1 = prev.shape !== 'custom' ? SHAPE_POINTS[prev.shape] : SHAPE_POINTS.sine;
       return {
         ...prev,
         rate: l1Hz,
         lfo1: {
+          id: 'lfo1',
+          enabled: true,
+          smooth: prev.lfo1?.smooth ?? 0,
           shape: prev.lfo1?.shape ?? prev.shape,
           rate: l1Hz,
           syncDivision: l1Div,
-          points: prev.lfo1?.points ?? SHAPE_POINTS[prev.shape] ?? SHAPE_POINTS.sine
+          points: prev.lfo1?.points ?? defaultPts1
         },
         lfo2: {
+          id: 'lfo2',
+          enabled: true,
+          smooth: prev.lfo2?.smooth ?? 0,
           shape: prev.lfo2?.shape ?? 'triangle',
           rate: l2Hz,
           syncDivision: l2Div,
@@ -524,7 +535,7 @@ export const App: React.FC = () => {
 
       // 4. Momentary Keyboard Punch-In FX (Hold D / X / C)
       if (punchInFx === 'datamosh') {
-        nextVideo.datamosh = Math.max(nextVideo.datamosh, 0.85);
+        nextVideo.datamosh = Math.max(nextVideo.datamosh ?? 0, 0.85);
         nextVideo.rgbShift = Math.min(1, nextVideo.rgbShift + 0.35);
       } else if (punchInFx === 'glitch') {
         nextVideo.glitchIntensity = Math.max(nextVideo.glitchIntensity, 0.78);
@@ -611,23 +622,34 @@ export const App: React.FC = () => {
           setMacroXY((prev) => ({ ...prev, y: Number(normalized.toFixed(3)) }));
         } else if (target === 'mod.lfo1Rate') {
           const hz = Number((0.1 + normalized * 11.9).toFixed(2));
-          setLfoConfig((prev) => ({
-            ...prev,
-            enabled: true,
-            rate: hz,
-            lfo1: {
-              ...(prev.lfo1 || { shape: prev.shape, points: SHAPE_POINTS[prev.shape] || SHAPE_POINTS.sine }),
+          setLfoConfig((prev): LfoConfig => {
+            const defaultPts = prev.shape !== 'custom' ? SHAPE_POINTS[prev.shape] : SHAPE_POINTS.sine;
+            return {
+              ...prev,
+              enabled: true,
               rate: hz,
-              syncDivision: 'free'
-            }
-          }));
+              lfo1: {
+                id: 'lfo1',
+                enabled: true,
+                smooth: prev.lfo1?.smooth ?? 0,
+                shape: prev.lfo1?.shape ?? prev.shape,
+                points: prev.lfo1?.points ?? defaultPts,
+                rate: hz,
+                syncDivision: 'free'
+              }
+            };
+          });
         } else if (target === 'mod.lfo2Rate') {
           const hz = Number((0.1 + normalized * 11.9).toFixed(2));
-          setLfoConfig((prev) => ({
+          setLfoConfig((prev): LfoConfig => ({
             ...prev,
             enabled: true,
             lfo2: {
-              ...(prev.lfo2 || { shape: 'triangle', points: SHAPE_POINTS.triangle }),
+              id: 'lfo2',
+              enabled: true,
+              smooth: prev.lfo2?.smooth ?? 0,
+              shape: prev.lfo2?.shape ?? 'triangle',
+              points: prev.lfo2?.points ?? SHAPE_POINTS.triangle,
               rate: hz,
               syncDivision: 'free'
             }
