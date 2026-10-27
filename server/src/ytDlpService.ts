@@ -23,6 +23,7 @@ export class YtDlpService {
   private hasCookiesFile: boolean = false;
   private authMode: 'none' | 'credentials' | 'oauth' | 'env' = 'none';
   private updatedAt: number | null = null;
+  private activeStreamProcess: ReturnType<typeof spawn> | null = null;
 
   constructor() {
     this.detectExecutable();
@@ -171,8 +172,6 @@ export class YtDlpService {
         '--no-check-certificates',
         '--js-runtimes',
         'node',
-        '--remote-components',
-        'ejs:github',
         '--extractor-args',
         this.getExtractorClientArg(),
         ...this.getAuthArgs(),
@@ -304,7 +303,22 @@ export class YtDlpService {
 
     const args = this.isDirectBinary ? baseArgs : ['-m', 'yt_dlp', ...baseArgs];
 
+    // Terminate any previous stream process to prevent overlapping yt-dlp instances from exceeding Render's 512MB RAM
+    if (this.activeStreamProcess) {
+      try {
+        this.activeStreamProcess.kill('SIGTERM');
+      } catch {}
+      this.activeStreamProcess = null;
+    }
+
     console.log(`[yt-dlp] Spawning stream for ${targetUrl} via ${this.binaryCmd} (shell=false)`);
-    return spawn(this.binaryCmd, args, { shell: false });
+    const proc = spawn(this.binaryCmd, args, { shell: false });
+    this.activeStreamProcess = proc;
+    proc.on('close', () => {
+      if (this.activeStreamProcess === proc) {
+        this.activeStreamProcess = null;
+      }
+    });
+    return proc;
   }
 }
