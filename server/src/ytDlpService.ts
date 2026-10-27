@@ -177,7 +177,7 @@ export class YtDlpService {
 
   public prefetchTrack(videoId: string): void {
     const safeId = videoId.replace(/[^a-zA-Z0-9_-]/g, '');
-    if (!safeId || this.prefetchInProgress.has(safeId) || this.getCachedStreamPath(safeId)) {
+    if (!safeId || this.prefetchInProgress.size > 0 || this.getCachedStreamPath(safeId)) {
       return;
     }
 

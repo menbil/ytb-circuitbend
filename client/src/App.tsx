@@ -884,9 +884,16 @@ export const App: React.FC = () => {
           // Only auto-start playback if the playlist was completely empty
           setTimeout(() => loadTrackAtIndex(0, merged), 50);
         } else {
-          // Keep current track playing seamlessly without interruption
+          // Keep current track playing seamlessly & pre-buffer newly added track in background
           const addedTitle = newItems.length === 1 ? newItems[0].title : `${newItems.length} titres ajoutés`;
-          showToast('➕ AJOUTÉ À LA FILE (LECTURE CONTINUE)', addedTitle);
+          showToast('➕ AJOUTÉ À LA FILE (PRÉ-CHARGEMENT EN COURS)', addedTitle);
+          if (newItems[0]?.id) {
+            fetch('/api/prefetch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: newItems[0].id })
+            }).catch(() => {});
+          }
         }
         return merged;
       });
@@ -925,6 +932,20 @@ export const App: React.FC = () => {
       console.warn('[Video Playback Warning]:', err.message);
       setIsPlaying(false);
     });
+
+    // Pre-buffer next track in queue 4s after current stream starts
+    if (list.length > 1) {
+      const nextTrack = list[(index + 1) % list.length];
+      if (nextTrack?.id) {
+        setTimeout(() => {
+          fetch('/api/prefetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: nextTrack.id })
+          }).catch(() => {});
+        }, 4000);
+      }
+    }
   };
 
   const handlePlayToggle = () => {
