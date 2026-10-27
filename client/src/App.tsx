@@ -842,21 +842,11 @@ export const App: React.FC = () => {
     setError(null);
 
     try {
-      let response = await fetch('/api/playlist', {
+      const response = await fetch('/api/playlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
-      }).catch(() => null);
-
-      if (!response || !response.ok) {
-        // Retry once after 2s in case server is warming up
-        await new Promise((r) => setTimeout(r, 2000));
-        response = await fetch('/api/playlist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url })
-        });
-      }
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Échec de connexion au serveur de flux.' }));

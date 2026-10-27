@@ -240,34 +240,6 @@ export class YtDlpService {
    * Parse a YouTube playlist or single video URL and return metadata
    */
   public async parseUrl(url: string, _baseUrl: string): Promise<PlaylistResponse> {
-    // Fast-path (~50ms, 0% CPU) for single video URLs (without list= parameter) so adding a track never stutters active playback
-    const isPlaylistUrl = /[?&]list=([^&#]+)/.test(url);
-    const singleVideoMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/|v\/))([a-zA-Z0-9_-]{11})/);
-    if (!isPlaylistUrl && singleVideoMatch && singleVideoMatch[1]) {
-      const videoId = singleVideoMatch[1];
-      try {
-        const oembedRes = await fetch(
-          `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`
-        );
-        if (oembedRes.ok) {
-          const meta: any = await oembedRes.json();
-          return {
-            playlistTitle: meta.title || 'YouTube Video',
-            items: [
-              {
-                id: videoId,
-                title: meta.title || 'Untitled Track',
-                duration: 0,
-                thumbnail: meta.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-                streamUrl: `/api/stream?id=${videoId}`,
-                author: meta.author_name || ''
-              }
-            ]
-          };
-        }
-      } catch {}
-    }
-
     await this.detectExecutable();
 
     return new Promise((resolve, reject) => {
@@ -276,8 +248,13 @@ export class YtDlpService {
         '-J',
         '--no-warnings',
         '--no-check-certificates',
+        '--js-runtimes',
+        'node',
+        '--remote-components',
+        'ejs:github',
         '--extractor-args',
-        'youtube:player_client=android',
+        this.getExtractorClientArg(),
+        ...this.getAuthArgs(),
         url
       ];
 
