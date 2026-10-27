@@ -842,11 +842,21 @@ export const App: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/playlist', {
+      let response = await fetch('/api/playlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
-      });
+      }).catch(() => null);
+
+      if (!response || !response.ok) {
+        // Retry once after 2s in case server is warming up
+        await new Promise((r) => setTimeout(r, 2000));
+        response = await fetch('/api/playlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Échec de connexion au serveur de flux.' }));
@@ -874,16 +884,9 @@ export const App: React.FC = () => {
           // Only auto-start playback if the playlist was completely empty
           setTimeout(() => loadTrackAtIndex(0, merged), 50);
         } else {
-          // Keep current track playing seamlessly & pre-buffer newly added track in background
+          // Keep current track playing seamlessly without interruption
           const addedTitle = newItems.length === 1 ? newItems[0].title : `${newItems.length} titres ajoutés`;
           showToast('➕ AJOUTÉ À LA FILE (LECTURE CONTINUE)', addedTitle);
-          if (newItems[0]?.id) {
-            fetch('/api/prefetch', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: newItems[0].id })
-            }).catch(() => {});
-          }
         }
         return merged;
       });
@@ -922,20 +925,6 @@ export const App: React.FC = () => {
       console.warn('[Video Playback Warning]:', err.message);
       setIsPlaying(false);
     });
-
-    // Pre-buffer next track in queue in background for seamless gapless transition
-    if (list.length > 1) {
-      const nextTrack = list[(index + 1) % list.length];
-      if (nextTrack?.id) {
-        setTimeout(() => {
-          fetch('/api/prefetch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: nextTrack.id })
-          }).catch(() => {});
-        }, 2500);
-      }
-    }
   };
 
   const handlePlayToggle = () => {

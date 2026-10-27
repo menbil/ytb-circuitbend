@@ -251,8 +251,6 @@ export class YtDlpService {
         );
         if (oembedRes.ok) {
           const meta: any = await oembedRes.json();
-          // Trigger background prefetch so when user switches to this track (or current track ends) it starts in 0ms
-          setTimeout(() => this.prefetchTrack(videoId), 200);
           return {
             playlistTitle: meta.title || 'YouTube Video',
             items: [
@@ -278,13 +276,8 @@ export class YtDlpService {
         '-J',
         '--no-warnings',
         '--no-check-certificates',
-        '--js-runtimes',
-        'node',
-        '--remote-components',
-        'ejs:github',
         '--extractor-args',
-        this.getExtractorClientArg(),
-        ...this.getAuthArgs(),
+        'youtube:player_client=android',
         url
       ];
 
