@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { PlaylistItem } from '../types/index.js';
-import { ListMusic, Plus, Play, Disc3, Clock, AlertCircle, RefreshCw, X, Trash2, KeyRound, CheckCircle2, LogOut } from 'lucide-react';
+import { ListMusic, Plus, Play, Disc3, Clock, AlertCircle, RefreshCw, X, Trash2 } from 'lucide-react';
 
 interface PlaylistPanelProps {
   isOpen: boolean;
@@ -27,25 +27,6 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
   onRemoveTrack
 }) => {
   const [inputUrl, setInputUrl] = useState('');
-  const [showAuthBox, setShowAuthBox] = useState(false);
-  const [authEnabled, setAuthEnabled] = useState(false);
-  const [authEmailMasked, setAuthEmailMasked] = useState<string | null>(null);
-  const [emailInput, setEmailInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [authSaving, setAuthSaving] = useState(false);
-  const [authFeedback, setAuthFeedback] = useState<string | null>(null);
-
-  // Fetch current optional Google/YouTube login status when panel opens
-  useEffect(() => {
-    if (!isOpen) return;
-    fetch('/api/yt-auth')
-      .then((r) => r.json())
-      .then((data) => {
-        setAuthEnabled(Boolean(data?.enabled));
-        setAuthEmailMasked(data?.email || null);
-      })
-      .catch(() => {});
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -54,61 +35,6 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
     if (inputUrl.trim()) {
       onLoadUrl(inputUrl.trim());
       setInputUrl('');
-    }
-  };
-
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!emailInput.trim() || !passwordInput.trim()) return;
-
-    setAuthSaving(true);
-    setAuthFeedback(null);
-    try {
-      const res = await fetch('/api/yt-auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: emailInput.trim(),
-          password: passwordInput.trim()
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data?.status?.enabled) {
-        setAuthEnabled(true);
-        setAuthEmailMasked(data.status.email || emailInput.trim());
-        setPasswordInput('');
-        setAuthFeedback('Compte Google / YouTube connecté !');
-        try {
-          localStorage.setItem(
-            'ytb_circuitbend_yt_auth',
-            JSON.stringify({ email: emailInput.trim(), password: passwordInput.trim() })
-          );
-        } catch {}
-      } else {
-        setAuthFeedback(data?.error || 'Erreur lors de la connexion.');
-      }
-    } catch (err: any) {
-      setAuthFeedback(err?.message || 'Erreur réseau.');
-    } finally {
-      setAuthSaving(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    setAuthSaving(true);
-    setAuthFeedback(null);
-    try {
-      await fetch('/api/yt-auth', { method: 'DELETE' });
-      setAuthEnabled(false);
-      setAuthEmailMasked(null);
-      setEmailInput('');
-      setPasswordInput('');
-      try {
-        localStorage.removeItem('ytb_circuitbend_yt_auth');
-      } catch {}
-      setAuthFeedback('Déconnecté (mode relais automatique sans compte).');
-    } catch {} finally {
-      setAuthSaving(false);
     }
   };
 
@@ -136,100 +62,14 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowAuthBox((prev) => !prev)}
-            className={`px-2.5 py-1 rounded-md font-mono text-[10px] font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-              authEnabled
-                ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/80 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
-                : showAuthBox
-                ? 'bg-amber-500 text-black border-amber-400'
-                : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-neutral-700'
-            }`}
-            title="Connexion Compte Google / YouTube (Optionnel)"
-          >
-            <KeyRound size={12} />
-            <span>{authEnabled ? `CONNECTÉ (${authEmailMasked || 'YT'})` : 'COMPTE GOOGLE / YT'}</span>
-          </button>
-
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
-            title="Fermer"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      </div>
-
-      {/* Simple Optional Google / YouTube Login Form */}
-      {showAuthBox && (
-        <form
-          onSubmit={handleLoginSubmit}
-          className="p-3.5 border-b border-amber-500/40 bg-[#12151e] font-mono text-xs space-y-2.5 animate-in fade-in duration-150"
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
+          title="Fermer"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
-              <KeyRound size={13} />
-              CONNEXION GOOGLE / YOUTUBE (OPTIONNEL)
-            </span>
-            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
-              authEnabled ? 'bg-emerald-950 text-emerald-300 border border-emerald-600' : 'bg-neutral-800 text-neutral-400'
-            }`}>
-              {authEnabled ? 'COMPTE CONNECTÉ' : 'RELAIS AUTO ACTIF'}
-            </span>
-          </div>
-
-          <p className="text-[10px] text-neutral-400 leading-relaxed">
-            Par défaut, le serveur utilise un <strong>relais automatique multi-instances (Piped / Invidious / oEmbed)</strong> qui fonctionne sans aucun compte. Vous pouvez en option connecter vos identifiants Google / YouTube :
-          </p>
-
-          <div className="space-y-1.5">
-            <input
-              type="email"
-              value={emailInput}
-              onChange={(e) => setEmailInput(e.target.value)}
-              placeholder="Adresse e-mail Google / YouTube..."
-              className="w-full bg-black/80 border border-neutral-700 focus:border-amber-500 rounded px-2.5 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
-            />
-            <div className="flex items-center gap-2">
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Mot de passe Google..."
-                className="flex-1 bg-black/80 border border-neutral-700 focus:border-amber-500 rounded px-2.5 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={authSaving || !emailInput.trim() || !passwordInput.trim()}
-                className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 disabled:bg-neutral-800 disabled:text-neutral-600 text-black font-bold text-[10px] cursor-pointer"
-              >
-                {authSaving ? '...' : 'CONNECTER'}
-              </button>
-              {authEnabled && (
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  disabled={authSaving}
-                  className="px-2.5 py-1.5 rounded bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                  title="Se déconnecter"
-                >
-                  <LogOut size={11} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {authFeedback && (
-            <div className="p-2 rounded bg-emerald-950/60 border border-emerald-700 text-emerald-300 text-[10px] flex items-center gap-1.5">
-              <CheckCircle2 size={12} className="shrink-0" />
-              <span>{authFeedback}</span>
-            </div>
-          )}
-        </form>
-      )}
+          <X size={16} />
+        </button>
+      </div>
 
       {/* URL Input Form */}
       <div className="p-4 border-b border-neutral-800/80 bg-neutral-900/30">

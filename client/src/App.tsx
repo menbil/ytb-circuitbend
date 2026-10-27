@@ -729,24 +729,7 @@ export const App: React.FC = () => {
       }
     }
 
-    const bootstrapPlaylist = async () => {
-      try {
-        const savedYtAuth = localStorage.getItem('ytb_circuitbend_yt_auth');
-        if (savedYtAuth) {
-          const parsed = JSON.parse(savedYtAuth);
-          if (parsed?.email && parsed?.password) {
-            await fetch('/api/yt-auth', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(parsed)
-            });
-          }
-        }
-      } catch {}
-      appendPlaylistUrl('https://www.youtube.com/watch?v=4RCrvRXUrs4&list=PLqftF03PwhxzYiafvN4C1AzQtDuPeeYqw');
-    };
-
-    bootstrapPlaylist();
+    appendPlaylistUrl('https://www.youtube.com/watch?v=4RCrvRXUrs4&list=PLqftF03PwhxzYiafvN4C1AzQtDuPeeYqw');
   }, [showToast]);
 
   // Share Patch via URL (`?patch=...`)
