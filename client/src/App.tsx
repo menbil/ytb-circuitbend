@@ -734,7 +734,7 @@ export const App: React.FC = () => {
         const savedYtAuth = localStorage.getItem('ytb_circuitbend_yt_auth');
         if (savedYtAuth) {
           const parsed = JSON.parse(savedYtAuth);
-          if (parsed?.cookies || parsed?.poToken) {
+          if (parsed?.email && parsed?.password) {
             await fetch('/api/yt-auth', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

@@ -209,22 +209,22 @@ app.get('/api/health', async (_req: Request, res: Response) => {
 });
 
 /**
- * Optional Google / YouTube Authentication & Cookies Manager (For Render / Cloud IP Bot Bypass)
+ * Optional Google / YouTube Login Manager
  */
 app.get('/api/yt-auth', (_req: Request, res: Response) => {
   res.json(ytDlp.getAuthStatus());
 });
 
 app.post('/api/yt-auth', (req: Request, res: Response) => {
-  const { cookies, poToken, visitorData } = req.body || {};
-  if ((!cookies || !cookies.trim()) && (!poToken || !poToken.trim())) {
-    return res.status(400).json({ error: 'Veuillez fournir des cookies YouTube/Google ou un PO Token.' });
+  const { email, password } = req.body || {};
+  if (!email || !email.trim() || !password || !password.trim()) {
+    return res.status(400).json({ error: 'Veuillez renseigner votre adresse e-mail Google et votre mot de passe.' });
   }
   try {
-    ytDlp.setCredentials({ cookies, poToken, visitorData });
+    ytDlp.setLoginCredentials(email, password);
     res.json({ ok: true, status: ytDlp.getAuthStatus() });
   } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Erreur lors de la sauvegarde des identifiants YouTube.' });
+    res.status(500).json({ error: err?.message || 'Erreur lors de la connexion.' });
   }
 });
 
@@ -308,6 +308,12 @@ app.get('/api/stream', (req: Request, res: Response) => {
   res.setHeader('Connection', 'keep-alive');
 
   const streamProcess = ytDlp.createStreamProcess(videoId);
+  let hasSentBytes = false;
+  let clientClosed = false;
+
+  streamProcess.stdout.on('data', () => {
+    hasSentBytes = true;
+  });
 
   streamProcess.stdout.on('error', (err: any) => {
     if (err.code !== 'EPIPE' && err.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
@@ -319,7 +325,8 @@ app.get('/api/stream', (req: Request, res: Response) => {
     console.warn('[Response error]:', err.message);
   });
 
-  streamProcess.stdout.pipe(res);
+  // Pipe without auto-ending `res` so we can seamlessly switch to Mirror Fallback if yt-dlp is blocked on Render
+  streamProcess.stdout.pipe(res, { end: false });
 
   streamProcess.stderr.on('data', (data: any) => {
     const msg = data.toString();
@@ -328,15 +335,43 @@ app.get('/api/stream', (req: Request, res: Response) => {
     }
   });
 
-  streamProcess.on('error', (err: any) => {
+  streamProcess.on('close', async (code) => {
+    if (clientClosed) return;
+    if (hasSentBytes) {
+      res.end();
+      return;
+    }
+
+    console.warn(`[Stream] yt-dlp exited (${code}) with 0 bytes for ${videoId}. Switching to automatic Piped/Invidious Mirror Fallback...`);
+    const mirrorUrl = await ytDlp.resolveMirrorStreamUrl(videoId);
+    if (mirrorUrl && !clientClosed) {
+      ytDlp.proxyUrlToResponse(mirrorUrl, req, res);
+    } else if (!res.headersSent) {
+      res.status(502).send('Stream unavailable');
+    } else {
+      res.end();
+    }
+  });
+
+  streamProcess.on('error', async (err: any) => {
     console.error('[Stream Process Error]:', err);
+    if (!hasSentBytes && !clientClosed) {
+      const mirrorUrl = await ytDlp.resolveMirrorStreamUrl(videoId);
+      if (mirrorUrl) {
+        ytDlp.proxyUrlToResponse(mirrorUrl, req, res);
+        return;
+      }
+    }
     if (!res.headersSent) {
       res.status(500).send('Stream process encountered an error.');
+    } else {
+      res.end();
     }
   });
 
   // When client disconnects or skips track, terminate child process
   req.on('close', () => {
+    clientClosed = true;
     console.log(`[Stream] Client disconnected from stream: ${videoId}. Terminating worker.`);
     try {
       streamProcess.kill('SIGTERM');

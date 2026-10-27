@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PlaylistItem } from '../types/index.js';
-import { ListMusic, Plus, Play, Disc3, Clock, AlertCircle, RefreshCw, X, Trash2, KeyRound, Upload, CheckCircle2 } from 'lucide-react';
+import { ListMusic, Plus, Play, Disc3, Clock, AlertCircle, RefreshCw, X, Trash2, KeyRound, CheckCircle2, LogOut } from 'lucide-react';
 
 interface PlaylistPanelProps {
   isOpen: boolean;
@@ -29,31 +29,23 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
   const [inputUrl, setInputUrl] = useState('');
   const [showAuthBox, setShowAuthBox] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
-  const [authSource, setAuthSource] = useState<'env' | 'ui' | 'none'>('none');
-  const [cookiesInput, setCookiesInput] = useState('');
-  const [poTokenInput, setPoTokenInput] = useState('');
+  const [authEmailMasked, setAuthEmailMasked] = useState<string | null>(null);
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [authSaving, setAuthSaving] = useState(false);
   const [authFeedback, setAuthFeedback] = useState<string | null>(null);
-  const cookieFileRef = useRef<HTMLInputElement | null>(null);
 
-  // Fetch current optional YouTube/Google auth status when panel opens
+  // Fetch current optional Google/YouTube login status when panel opens
   useEffect(() => {
     if (!isOpen) return;
     fetch('/api/yt-auth')
       .then((r) => r.json())
       .then((data) => {
         setAuthEnabled(Boolean(data?.enabled));
-        setAuthSource(data?.source || 'none');
+        setAuthEmailMasked(data?.email || null);
       })
       .catch(() => {});
   }, [isOpen]);
-
-  // Auto-open the optional Google/YouTube auth panel if YouTube blocks the cloud IP
-  useEffect(() => {
-    if (error && (error.includes('not a bot') || error.includes('cookies') || error.includes('Sign in'))) {
-      setShowAuthBox(true);
-    }
-  }, [error]);
 
   if (!isOpen) return null;
 
@@ -65,9 +57,9 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
     }
   };
 
-  const handleSaveAuth = async (customCookies?: string) => {
-    const cookiesToUse = customCookies !== undefined ? customCookies : cookiesInput;
-    if (!cookiesToUse.trim() && !poTokenInput.trim()) return;
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput.trim() || !passwordInput.trim()) return;
 
     setAuthSaving(true);
     setAuthFeedback(null);
@@ -76,23 +68,24 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cookies: cookiesToUse.trim(),
-          poToken: poTokenInput.trim()
+          email: emailInput.trim(),
+          password: passwordInput.trim()
         })
       });
       const data = await res.json();
       if (res.ok && data?.status?.enabled) {
         setAuthEnabled(true);
-        setAuthSource(data.status.source || 'ui');
-        setAuthFeedback('Session Google / YouTube activée ! Relancez votre lien vidéo.');
+        setAuthEmailMasked(data.status.email || emailInput.trim());
+        setPasswordInput('');
+        setAuthFeedback('Compte Google / YouTube connecté !');
         try {
           localStorage.setItem(
             'ytb_circuitbend_yt_auth',
-            JSON.stringify({ cookies: cookiesToUse.trim(), poToken: poTokenInput.trim() })
+            JSON.stringify({ email: emailInput.trim(), password: passwordInput.trim() })
           );
         } catch {}
       } else {
-        setAuthFeedback(data?.error || 'Erreur lors de l’activation.');
+        setAuthFeedback(data?.error || 'Erreur lors de la connexion.');
       }
     } catch (err: any) {
       setAuthFeedback(err?.message || 'Erreur réseau.');
@@ -101,32 +94,22 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
     }
   };
 
-  const handleClearAuth = async () => {
+  const handleLogout = async () => {
     setAuthSaving(true);
     setAuthFeedback(null);
     try {
       await fetch('/api/yt-auth', { method: 'DELETE' });
       setAuthEnabled(false);
-      setAuthSource('none');
-      setCookiesInput('');
-      setPoTokenInput('');
+      setAuthEmailMasked(null);
+      setEmailInput('');
+      setPasswordInput('');
       try {
         localStorage.removeItem('ytb_circuitbend_yt_auth');
       } catch {}
-      setAuthFeedback('Session désactivée (mode sans compte actif).');
+      setAuthFeedback('Déconnecté (mode relais automatique sans compte).');
     } catch {} finally {
       setAuthSaving(false);
     }
-  };
-
-  const handleCookieFileUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = String(reader.result || '');
-      setCookiesInput(text);
-      handleSaveAuth(text);
-    };
-    reader.readAsText(file);
   };
 
   const formatDuration = (sec: number) => {
@@ -164,10 +147,10 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                 ? 'bg-amber-500 text-black border-amber-400'
                 : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-neutral-700'
             }`}
-            title="Connexion Google / YouTube optionnelle (pour contourner le blocage anti-bot sur Render)"
+            title="Connexion Compte Google / YouTube (Optionnel)"
           >
             <KeyRound size={12} />
-            <span>{authEnabled ? 'GOOGLE YT : CONNECTÉ' : 'CONNEXION GOOGLE / YT (OPTION)'}</span>
+            <span>{authEnabled ? `CONNECTÉ (${authEmailMasked || 'YT'})` : 'COMPTE GOOGLE / YT'}</span>
           </button>
 
           <button
@@ -180,82 +163,63 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
         </div>
       </div>
 
-      {/* Optional Google / YouTube Credentials Box (for Render Cloud IP Bot Bypass) */}
+      {/* Simple Optional Google / YouTube Login Form */}
       {showAuthBox && (
-        <div className="p-3.5 border-b border-amber-500/40 bg-[#12151e] font-mono text-xs space-y-2.5 animate-in fade-in duration-150">
+        <form
+          onSubmit={handleLoginSubmit}
+          className="p-3.5 border-b border-amber-500/40 bg-[#12151e] font-mono text-xs space-y-2.5 animate-in fade-in duration-150"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
               <KeyRound size={13} />
-              SESSION GOOGLE / YOUTUBE (OPTIONNEL)
+              CONNEXION GOOGLE / YOUTUBE (OPTIONNEL)
             </span>
             <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
               authEnabled ? 'bg-emerald-950 text-emerald-300 border border-emerald-600' : 'bg-neutral-800 text-neutral-400'
             }`}>
-              {authEnabled ? `ACTIF (${authSource.toUpperCase()})` : 'MODE SANS COMPTE'}
+              {authEnabled ? 'COMPTE CONNECTÉ' : 'RELAIS AUTO ACTIF'}
             </span>
           </div>
 
           <p className="text-[10px] text-neutral-400 leading-relaxed">
-            En local, aucune connexion n'est nécessaire. Sur un serveur cloud (<strong>Render.com</strong>), YouTube bloque parfois les IP de datacenter (<em>"Sign in to confirm you're not a bot"</em>). Connectez votre session Google/YouTube via un fichier <code>cookies.txt</code> (extension <em>Get cookies.txt LOCALLY</em>) ou en collant votre cookie de session :
+            Par défaut, le serveur utilise un <strong>relais automatique multi-instances (Piped / Invidious / oEmbed)</strong> qui fonctionne sans aucun compte. Vous pouvez en option connecter vos identifiants Google / YouTube :
           </p>
 
-          <div className="flex items-center gap-2">
+          <div className="space-y-1.5">
             <input
-              ref={cookieFileRef}
-              type="file"
-              accept=".txt"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleCookieFileUpload(file);
-                e.target.value = '';
-              }}
+              type="email"
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder="Adresse e-mail Google / YouTube..."
+              className="w-full bg-black/80 border border-neutral-700 focus:border-amber-500 rounded px-2.5 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
             />
-            <button
-              type="button"
-              onClick={() => cookieFileRef.current?.click()}
-              className="px-2.5 py-1.5 rounded bg-cyan-950/90 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/70 text-[10px] font-bold flex items-center gap-1.5 cursor-pointer"
-            >
-              <Upload size={12} />
-              <span>IMPORTER FICHIER COOKIES.TXT</span>
-            </button>
-
-            {authEnabled && (
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Mot de passe Google..."
+                className="flex-1 bg-black/80 border border-neutral-700 focus:border-amber-500 rounded px-2.5 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
+              />
               <button
-                type="button"
-                onClick={handleClearAuth}
-                disabled={authSaving}
-                className="px-2.5 py-1.5 rounded bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700 text-[10px] font-bold cursor-pointer"
+                type="submit"
+                disabled={authSaving || !emailInput.trim() || !passwordInput.trim()}
+                className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 disabled:bg-neutral-800 disabled:text-neutral-600 text-black font-bold text-[10px] cursor-pointer"
               >
-                DÉSACTIVER
+                {authSaving ? '...' : 'CONNECTER'}
               </button>
-            )}
-          </div>
-
-          <textarea
-            value={cookiesInput}
-            onChange={(e) => setCookiesInput(e.target.value)}
-            rows={3}
-            placeholder="Ou collez ici le contenu de votre cookies.txt (ou la ligne Cookie: SID=...; __Secure-1PSID=... d'un onglet YouTube connecté à Google)..."
-            className="w-full bg-black/80 border border-neutral-700 focus:border-amber-500 rounded p-2 text-[10px] text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
-          />
-
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={poTokenInput}
-              onChange={(e) => setPoTokenInput(e.target.value)}
-              placeholder="PO Token Google (Optionnel)"
-              className="flex-1 bg-black/80 border border-neutral-700 focus:border-amber-500 rounded px-2 py-1 text-[10px] text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => handleSaveAuth()}
-              disabled={authSaving || (!cookiesInput.trim() && !poTokenInput.trim())}
-              className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 disabled:bg-neutral-800 disabled:text-neutral-600 text-black font-bold text-[10px] cursor-pointer"
-            >
-              {authSaving ? 'ENREGISTREMENT...' : 'ACTIVER'}
-            </button>
+              {authEnabled && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={authSaving}
+                  className="px-2.5 py-1.5 rounded bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                  title="Se déconnecter"
+                >
+                  <LogOut size={11} />
+                </button>
+              )}
+            </div>
           </div>
 
           {authFeedback && (
@@ -264,7 +228,7 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
               <span>{authFeedback}</span>
             </div>
           )}
-        </div>
+        </form>
       )}
 
       {/* URL Input Form */}
