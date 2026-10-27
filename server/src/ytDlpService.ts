@@ -30,19 +30,45 @@ export class YtDlpService {
   }
 
   private initFromEnv() {
-    if (process.env.YOUTUBE_USERNAME && process.env.YOUTUBE_PASSWORD) {
-      this.username = process.env.YOUTUBE_USERNAME.trim();
-      this.password = process.env.YOUTUBE_PASSWORD.trim();
-      this.authMode = 'env';
-      this.updatedAt = Date.now();
+    // 1. Check Render Secret Files (/etc/secrets/cookies.txt) or local cookies.txt
+    const secretPaths = [
+      '/etc/secrets/cookies.txt',
+      path.resolve(process.cwd(), 'cookies.txt'),
+      path.resolve(process.cwd(), '../cookies.txt')
+    ];
+    for (const sp of secretPaths) {
+      if (fs.existsSync(sp)) {
+        try {
+          const content = fs.readFileSync(sp, 'utf-8');
+          if (content && content.trim()) {
+            fs.writeFileSync(this.cookiesFilePath, content.trim() + '\n', 'utf-8');
+            this.hasCookiesFile = true;
+            this.authMode = 'env';
+            this.updatedAt = Date.now();
+            console.log(`[yt-dlp] Loaded YouTube cookies from secret file: ${sp}`);
+            return;
+          }
+        } catch {}
+      }
     }
+
+    // 2. Check YOUTUBE_COOKIES env var (supports raw Netscape text or single-line Base64)
     const envCookies = process.env.YOUTUBE_COOKIES || process.env.YT_COOKIES;
     if (envCookies && envCookies.trim()) {
       try {
-        fs.writeFileSync(this.cookiesFilePath, envCookies.trim() + '\n', 'utf-8');
+        let raw = envCookies.trim();
+        if (!raw.includes('\t') && !raw.startsWith('#')) {
+          // Decode single-line Base64 if encoded
+          const decoded = Buffer.from(raw, 'base64').toString('utf-8');
+          if (decoded.includes('.youtube.com') || decoded.startsWith('#')) {
+            raw = decoded.trim();
+          }
+        }
+        fs.writeFileSync(this.cookiesFilePath, raw + '\n', 'utf-8');
         this.hasCookiesFile = true;
         this.authMode = 'env';
         this.updatedAt = Date.now();
+        console.log('[yt-dlp] Loaded YouTube cookies from YOUTUBE_COOKIES env var.');
       } catch {}
     }
   }
@@ -73,6 +99,13 @@ export class YtDlpService {
       mode: enabled ? this.authMode : 'none',
       updatedAt: this.updatedAt
     };
+  }
+
+  public getExtractorClientArg(): string {
+    if (this.hasCookiesFile && fs.existsSync(this.cookiesFilePath)) {
+      return 'youtube:player_client=mweb,tv,web_safari';
+    }
+    return 'youtube:player_client=android_vr,android,tv';
   }
 
   public getAuthArgs(): string[] {
@@ -139,7 +172,7 @@ export class YtDlpService {
         '--js-runtimes',
         'node',
         '--extractor-args',
-        'youtube:player_client=android',
+        this.getExtractorClientArg(),
         ...this.getAuthArgs(),
         url
       ];
@@ -252,7 +285,7 @@ export class YtDlpService {
       '--js-runtimes',
       'node',
       '--extractor-args',
-      'youtube:player_client=android',
+      this.getExtractorClientArg(),
       ...this.getAuthArgs(),
       '--retries',
       '10',
