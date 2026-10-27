@@ -103,9 +103,9 @@ export class YtDlpService {
 
   public getExtractorClientArg(): string {
     if (this.hasCookiesFile && fs.existsSync(this.cookiesFilePath)) {
-      return 'youtube:player_client=mweb,tv,web_safari';
+      return 'youtube:player_client=default,web,android_vr,mweb';
     }
-    return 'youtube:player_client=android_vr,android,tv';
+    return 'youtube:player_client=android_vr,android,default';
   }
 
   public getAuthArgs(): string[] {
@@ -171,6 +171,8 @@ export class YtDlpService {
         '--no-check-certificates',
         '--js-runtimes',
         'node',
+        '--remote-components',
+        'ejs:github',
         '--extractor-args',
         this.getExtractorClientArg(),
         ...this.getAuthArgs(),
@@ -278,12 +280,14 @@ export class YtDlpService {
     // Real-time progressive stream without chunk delays to prevent playback stalls
     const baseArgs = [
       '-f',
-      '18/b[height<=720]/best[height<=720]/best',
+      '18/b[ext=mp4]/b/best[ext=mp4]/best',
       '--no-playlist',
       '--no-warnings',
       '--no-part',
       '--js-runtimes',
       'node',
+      '--remote-components',
+      'ejs:github',
       '--extractor-args',
       this.getExtractorClientArg(),
       ...this.getAuthArgs(),
