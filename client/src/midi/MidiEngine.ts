@@ -224,26 +224,51 @@ export class MidiEngine {
   public init(dispatch: MidiDispatchFn) {
     this.dispatchFn = dispatch;
     this.connect();
+
+    // On external HTTPS domains (Render), Chromium/Opera may require a user gesture to grant Web MIDI access
+    if (typeof window !== 'undefined') {
+      const retryOnGesture = () => {
+        if (!this.isConnected) {
+          this.connect();
+        } else {
+          window.removeEventListener('pointerdown', retryOnGesture);
+          window.removeEventListener('keydown', retryOnGesture);
+        }
+      };
+      window.addEventListener('pointerdown', retryOnGesture, { passive: true });
+      window.addEventListener('keydown', retryOnGesture, { passive: true });
+    }
   }
 
   public async connect(): Promise<boolean> {
-    if (typeof navigator === 'undefined' || !('requestMIDIAccess' in navigator)) {
-      this.lastError = 'Web MIDI non supporté par ce navigateur (utilisez Chrome, Edge ou Brave en HTTPS).';
+    if (typeof navigator === 'undefined' || typeof (navigator as any).requestMIDIAccess !== 'function') {
+      this.lastError = 'Web MIDI non supporté par ce navigateur (utilisez Chrome, Edge, Opera ou Brave en HTTPS).';
       this.stateChangeListeners.forEach((cb) => cb(false, this.deviceName));
       return false;
     }
 
     try {
       this.lastError = null;
-      const access = await (navigator as any).requestMIDIAccess({ sysex: false });
+      let access = await (navigator as any).requestMIDIAccess({ sysex: false });
+      // If 0 inputs returned with sysex:false, try sysex:true to force permission prompt / Novation SysEx port enumeration
+      if (!access.inputs || access.inputs.size === 0) {
+        try {
+          access = await (navigator as any).requestMIDIAccess({ sysex: true });
+        } catch {
+          // Keep non-sysex access if sysex:true was declined
+        }
+      }
       this.midiAccess = access;
       this.setupInputs();
       access.onstatechange = () => {
         this.setupInputs();
       };
+      if (!this.isConnected) {
+        this.lastError = 'Aucun port MIDI détecté. Sur Windows, fermez tout autre navigateur/onglet local (localhost) ou logiciel utilisant déjà le Launch Control.';
+      }
       return this.isConnected;
     } catch (err: any) {
-      this.lastError = err?.message || 'Permission Web MIDI refusée dans le navigateur.';
+      this.lastError = err?.message || 'Permission Web MIDI refusée dans le navigateur (vérifiez l’icône cadenas à gauche de l’URL).';
       console.warn('[Web MIDI] Access denied or unsupported:', err);
       this.stateChangeListeners.forEach((cb) => cb(false, this.deviceName));
       return false;

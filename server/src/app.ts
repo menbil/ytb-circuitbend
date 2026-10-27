@@ -28,7 +28,8 @@ export const ytDlp = new YtDlpService();
 
 // Enable CORS and explicit Permissions-Policy for Web MIDI, Camera & Screen Capture on Render
 app.use((_req, res, next) => {
-  res.setHeader('Permissions-Policy', 'midi=(self *), camera=(self *), microphone=(self *), display-capture=(self *)');
+  res.setHeader('Permissions-Policy', 'midi=*, camera=*, microphone=*, display-capture=*');
+  res.setHeader('Feature-Policy', "midi 'self' *; camera 'self' *; microphone 'self' *");
   next();
 });
 
