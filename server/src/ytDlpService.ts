@@ -157,10 +157,119 @@ export class YtDlpService {
     return this.isDirectBinary ? this.binaryCmd : `${this.binaryCmd} -m yt_dlp`;
   }
 
+  private prefetchInProgress: Set<string> = new Set();
+  private cachedTracksOrder: string[] = [];
+
+  public getCachedStreamPath(videoId: string): string | null {
+    const safeId = videoId.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!safeId) return null;
+    const filePath = path.join(os.tmpdir(), `ytb-cache-${safeId}.mp4`);
+    try {
+      if (fs.existsSync(filePath)) {
+        const stat = fs.statSync(filePath);
+        if (stat.size > 32768) {
+          return filePath;
+        }
+      }
+    } catch {}
+    return null;
+  }
+
+  public prefetchTrack(videoId: string): void {
+    const safeId = videoId.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!safeId || this.prefetchInProgress.has(safeId) || this.getCachedStreamPath(safeId)) {
+      return;
+    }
+
+    this.prefetchInProgress.add(safeId);
+    const tempPath = path.join(os.tmpdir(), `ytb-cache-${safeId}.part.mp4`);
+    const finalPath = path.join(os.tmpdir(), `ytb-cache-${safeId}.mp4`);
+    const targetUrl = `https://www.youtube.com/watch?v=${safeId}`;
+
+    const baseArgs = [
+      '-f',
+      '18/b[ext=mp4]/b/best[ext=mp4]/best',
+      '--no-playlist',
+      '--no-warnings',
+      '--no-part',
+      '--js-runtimes',
+      'node',
+      '--remote-components',
+      'ejs:github',
+      '--extractor-args',
+      this.getExtractorClientArg(),
+      ...this.getAuthArgs(),
+      '-o',
+      tempPath,
+      targetUrl
+    ];
+
+    const args = this.isDirectBinary ? baseArgs : ['-m', 'yt_dlp', ...baseArgs];
+    console.log(`[yt-dlp] Background prefetching track ${safeId} for seamless transition...`);
+
+    const child = spawn(this.binaryCmd, args, { shell: false });
+    child.on('close', (code) => {
+      this.prefetchInProgress.delete(safeId);
+      if (code === 0 && fs.existsSync(tempPath)) {
+        try {
+          fs.renameSync(tempPath, finalPath);
+          this.cachedTracksOrder = this.cachedTracksOrder.filter((id) => id !== safeId);
+          this.cachedTracksOrder.push(safeId);
+          // Keep at most 5 cached videos in tmpdir
+          while (this.cachedTracksOrder.length > 5) {
+            const oldest = this.cachedTracksOrder.shift();
+            if (oldest) {
+              fs.promises.unlink(path.join(os.tmpdir(), `ytb-cache-${oldest}.mp4`)).catch(() => {});
+            }
+          }
+          console.log(`[yt-dlp] Prefetch ready for ${safeId}`);
+        } catch {
+          fs.promises.unlink(tempPath).catch(() => {});
+        }
+      } else {
+        fs.promises.unlink(tempPath).catch(() => {});
+      }
+    });
+    child.on('error', () => {
+      this.prefetchInProgress.delete(safeId);
+      fs.promises.unlink(tempPath).catch(() => {});
+    });
+  }
+
   /**
    * Parse a YouTube playlist or single video URL and return metadata
    */
   public async parseUrl(url: string, _baseUrl: string): Promise<PlaylistResponse> {
+    // Fast-path (~50ms, 0% CPU) for single video URLs (without list= parameter) so adding a track never stutters active playback
+    const isPlaylistUrl = /[?&]list=([^&#]+)/.test(url);
+    const singleVideoMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/|v\/))([a-zA-Z0-9_-]{11})/);
+    if (!isPlaylistUrl && singleVideoMatch && singleVideoMatch[1]) {
+      const videoId = singleVideoMatch[1];
+      try {
+        const oembedRes = await fetch(
+          `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`
+        );
+        if (oembedRes.ok) {
+          const meta: any = await oembedRes.json();
+          // Trigger background prefetch so when user switches to this track (or current track ends) it starts in 0ms
+          setTimeout(() => this.prefetchTrack(videoId), 200);
+          return {
+            playlistTitle: meta.title || 'YouTube Video',
+            items: [
+              {
+                id: videoId,
+                title: meta.title || 'Untitled Track',
+                duration: 0,
+                thumbnail: meta.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                streamUrl: `/api/stream?id=${videoId}`,
+                author: meta.author_name || ''
+              }
+            ]
+          };
+        }
+      } catch {}
+    }
+
     await this.detectExecutable();
 
     return new Promise((resolve, reject) => {

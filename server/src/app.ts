@@ -286,6 +286,18 @@ app.post('/api/playlist', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/prefetch
+ * Pre-buffers the next track in background so transitions are 100% seamless (0ms wait)
+ */
+app.post('/api/prefetch', (req: Request, res: Response) => {
+  const { id } = req.body || {};
+  if (id && typeof id === 'string') {
+    ytDlp.prefetchTrack(id);
+  }
+  res.json({ ok: true });
+});
+
+/**
  * GET /api/stream?id=...
  * Streams the video/audio with permissive CORS headers for WebGL VideoTexture and Web Audio API
  */
@@ -304,6 +316,35 @@ app.get('/api/stream', (req: Request, res: Response) => {
   res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
   res.setHeader('Content-Type', 'video/mp4');
+
+  // If the track was pre-buffered in background, stream it immediately from disk (0ms latency + Range support)
+  const cachedPath = ytDlp.getCachedStreamPath(videoId);
+  if (cachedPath) {
+    try {
+      const stat = fs.statSync(cachedPath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+      res.setHeader('Accept-Ranges', 'bytes');
+
+      if (range) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        if (start >= 0 && start < fileSize && end >= start && end < fileSize) {
+          res.status(206);
+          res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+          res.setHeader('Content-Length', String(end - start + 1));
+          fs.createReadStream(cachedPath, { start, end }).pipe(res);
+          return;
+        }
+      }
+
+      res.setHeader('Content-Length', String(fileSize));
+      fs.createReadStream(cachedPath).pipe(res);
+      return;
+    } catch {}
+  }
+
   res.setHeader('Accept-Ranges', 'none');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Connection', 'keep-alive');

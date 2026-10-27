@@ -859,20 +859,32 @@ export const App: React.FC = () => {
       }
 
       setPlaylist((prev) => {
+        const wasEmpty = prev.length === 0;
         const existingIds = new Set(prev.map(i => i.id));
         const newItems = data.items.filter((i: PlaylistItem) => !existingIds.has(i.id));
 
         if (newItems.length === 0) {
-          const existingIdx = prev.findIndex(i => i.id === data.items[0]?.id);
-          if (existingIdx !== -1) {
-            setTimeout(() => loadTrackAtIndex(existingIdx, prev), 30);
-          }
+          showToast('ℹ️ DÉJÀ DANS LA FILE', 'Ce titre est déjà présent dans la playlist');
           return prev;
         }
 
         const merged = [...prev, ...newItems];
-        const targetIdx = prev.length;
-        setTimeout(() => loadTrackAtIndex(targetIdx < merged.length ? targetIdx : 0, merged), 50);
+
+        if (wasEmpty) {
+          // Only auto-start playback if the playlist was completely empty
+          setTimeout(() => loadTrackAtIndex(0, merged), 50);
+        } else {
+          // Keep current track playing seamlessly & pre-buffer newly added track in background
+          const addedTitle = newItems.length === 1 ? newItems[0].title : `${newItems.length} titres ajoutés`;
+          showToast('➕ AJOUTÉ À LA FILE (LECTURE CONTINUE)', addedTitle);
+          if (newItems[0]?.id) {
+            fetch('/api/prefetch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: newItems[0].id })
+            }).catch(() => {});
+          }
+        }
         return merged;
       });
 
@@ -910,6 +922,20 @@ export const App: React.FC = () => {
       console.warn('[Video Playback Warning]:', err.message);
       setIsPlaying(false);
     });
+
+    // Pre-buffer next track in queue in background for seamless gapless transition
+    if (list.length > 1) {
+      const nextTrack = list[(index + 1) % list.length];
+      if (nextTrack?.id) {
+        setTimeout(() => {
+          fetch('/api/prefetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: nextTrack.id })
+          }).catch(() => {});
+        }, 2500);
+      }
+    }
   };
 
   const handlePlayToggle = () => {

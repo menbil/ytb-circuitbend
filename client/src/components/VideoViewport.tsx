@@ -125,12 +125,15 @@ const CircuitScreen: React.FC<{
     const p = paramsRef.current;
     const moshAmt = Number.isFinite(p.datamosh ?? 0) ? (p.datamosh ?? 0) : 0;
 
-    if (!isFreezeActive && texture) {
+    const isVideoReady = Boolean(videoElement && videoElement.readyState >= 2);
+
+    if (!isFreezeActive && texture && isVideoReady) {
       texture.needsUpdate = true;
     }
 
-    // Update Ping-Pong Temporal Datamosh Buffer
-    if (texture) {
+    // Update Ping-Pong Temporal Datamosh Buffer only when video has a valid decoded frame
+    // When switching tracks (readyState < 2), keep displaying last frame in moshPipeline.read to prevent black flash
+    if (texture && isVideoReady) {
       const mu = moshPipeline.material.uniforms;
       mu.tVideo.value = texture;
       mu.tPrevMosh.value = moshPipeline.read.texture;
@@ -149,6 +152,9 @@ const CircuitScreen: React.FC<{
 
       // Strictly use raw video texture when Datamosh is 0, and Temporal Optical Flow buffer when > 0
       u.tDiffuse.value = moshAmt > 0.001 ? moshPipeline.read.texture : texture;
+    } else if (texture && !isVideoReady) {
+      // Seamless visual hold on last frame during track switch
+      u.tDiffuse.value = moshPipeline.read.texture;
     }
 
     u.uTime.value = state.clock.getElapsedTime();
