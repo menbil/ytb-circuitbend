@@ -39,7 +39,7 @@ app.use(cors({
   exposedHeaders: ['Content-Range', 'Content-Length', 'Accept-Ranges']
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 // Raw binary body parser for media recording conversion (up to 300MB)
 app.use('/api/convert-mp4', express.raw({ type: () => true, limit: '300mb' }));
 
@@ -205,7 +205,32 @@ if (hasClientDist) {
 // Health check endpoint
 app.get('/api/health', async (_req: Request, res: Response) => {
   const exe = await ytDlp.getExecutable();
-  res.json({ status: 'ok', engine: 'ytb-circuitbend-backend', ytDlpCmd: exe });
+  res.json({ status: 'ok', engine: 'ytb-circuitbend-backend', ytDlpCmd: exe, ytAuth: ytDlp.getAuthStatus() });
+});
+
+/**
+ * Optional Google / YouTube Authentication & Cookies Manager (For Render / Cloud IP Bot Bypass)
+ */
+app.get('/api/yt-auth', (_req: Request, res: Response) => {
+  res.json(ytDlp.getAuthStatus());
+});
+
+app.post('/api/yt-auth', (req: Request, res: Response) => {
+  const { cookies, poToken, visitorData } = req.body || {};
+  if ((!cookies || !cookies.trim()) && (!poToken || !poToken.trim())) {
+    return res.status(400).json({ error: 'Veuillez fournir des cookies YouTube/Google ou un PO Token.' });
+  }
+  try {
+    ytDlp.setCredentials({ cookies, poToken, visitorData });
+    res.json({ ok: true, status: ytDlp.getAuthStatus() });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Erreur lors de la sauvegarde des identifiants YouTube.' });
+  }
+});
+
+app.delete('/api/yt-auth', (_req: Request, res: Response) => {
+  ytDlp.clearCredentials();
+  res.json({ ok: true, status: ytDlp.getAuthStatus() });
 });
 
 // Diagnostic stream endpoint to capture exact yt-dlp stderr output on Render

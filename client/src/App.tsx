@@ -729,7 +729,24 @@ export const App: React.FC = () => {
       }
     }
 
-    appendPlaylistUrl('https://www.youtube.com/watch?v=4RCrvRXUrs4&list=PLqftF03PwhxzYiafvN4C1AzQtDuPeeYqw');
+    const bootstrapPlaylist = async () => {
+      try {
+        const savedYtAuth = localStorage.getItem('ytb_circuitbend_yt_auth');
+        if (savedYtAuth) {
+          const parsed = JSON.parse(savedYtAuth);
+          if (parsed?.cookies || parsed?.poToken) {
+            await fetch('/api/yt-auth', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(parsed)
+            });
+          }
+        }
+      } catch {}
+      appendPlaylistUrl('https://www.youtube.com/watch?v=4RCrvRXUrs4&list=PLqftF03PwhxzYiafvN4C1AzQtDuPeeYqw');
+    };
+
+    bootstrapPlaylist();
   }, [showToast]);
 
   // Share Patch via URL (`?patch=...`)
