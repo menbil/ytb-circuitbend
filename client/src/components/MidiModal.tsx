@@ -17,14 +17,26 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
     notes: { ...LAUNCH_CONTROL_PROFILE.noteMap }
   });
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'video' | 'audio' | 'action'>('all');
+  const [isConnected, setIsConnected] = useState<boolean>(midiEngine ? midiEngine.getIsConnected() : false);
+  const [deviceName, setDeviceName] = useState<string>(midiEngine ? midiEngine.getDeviceName() : 'No Device');
+  const [midiError, setMidiError] = useState<string | null>(midiEngine ? midiEngine.getLastError() : null);
 
   useEffect(() => {
     if (!midiEngine) return;
 
     const refreshBindings = () => {
       setBindings(midiEngine.getAllBindings());
+      setIsConnected(midiEngine.getIsConnected());
+      setDeviceName(midiEngine.getDeviceName());
+      setMidiError(midiEngine.getLastError());
     };
     refreshBindings();
+
+    midiEngine.onStateChange((connected, name) => {
+      setIsConnected(connected);
+      setDeviceName(name);
+      setMidiError(midiEngine.getLastError());
+    });
 
     midiEngine.onActivity((event) => {
       setLastActivity(event);
@@ -36,6 +48,14 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
   }, [midiEngine, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleRescanMidi = async () => {
+    if (!midiEngine) return;
+    const ok = await midiEngine.connect();
+    setIsConnected(ok);
+    setDeviceName(midiEngine.getDeviceName());
+    setMidiError(midiEngine.getLastError());
+  };
 
   const handleStartLearn = (target: MidiTarget) => {
     if (!midiEngine) return;
@@ -53,9 +73,6 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
     midiEngine.resetToProfile(profileId);
     setBindings(midiEngine.getAllBindings());
   };
-
-  const isConnected = midiEngine ? midiEngine.getIsConnected() : false;
-  const deviceName = midiEngine ? midiEngine.getDeviceName() : 'Aucun contrôleur';
 
   const SHORT_TARGET_LABELS: Record<string, string> = {
     'video.glitchIntensity': 'H-GLITCH',
@@ -178,25 +195,47 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
         </div>
 
         {/* Live Device & Activity Status Bar */}
-        <div className="px-6 py-3 bg-[#0d0e12] border-b border-[#242933] flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-          <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
-            <span className="text-neutral-400">Contrôleur :</span>
-            <span className={`font-bold ${isConnected ? 'text-emerald-400' : 'text-rose-400'}`}>{deviceName}</span>
+        <div className="px-6 py-3 bg-[#0d0e12] border-b border-[#242933] flex flex-col gap-2 text-xs font-mono">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+              <span className="text-neutral-400">Contrôleur :</span>
+              <span className={`font-bold ${isConnected ? 'text-emerald-400' : 'text-rose-400'}`}>{deviceName}</span>
+              <button
+                type="button"
+                onClick={handleRescanMidi}
+                className="ml-2 px-2 py-0.5 rounded bg-cyan-950/90 hover:bg-cyan-900 text-cyan-300 border border-cyan-600/80 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                title="Relancer la détection USB Web MIDI et demander l'autorisation au navigateur"
+              >
+                <RefreshCw size={10} />
+                <span>RE-SCANNER USB MIDI</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 bg-[#171a22] px-3 py-1 rounded border border-[#2e3442]">
+              <Radio size={12} className={lastActivity ? 'text-amber-400 animate-ping' : 'text-neutral-600'} />
+              <span className="text-neutral-400">Signal reçu :</span>
+              {lastActivity ? (
+                <span className="text-amber-300 font-bold">
+                  {lastActivity.type.toUpperCase()} #{lastActivity.paramNumber} (Val: {lastActivity.value})
+                  {lastActivity.targetMapped && <span className="text-cyan-400 ml-1">→ {lastActivity.targetMapped}</span>}
+                </span>
+              ) : (
+                <span className="text-neutral-500 italic">En attente d'un mouvement...</span>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-[#171a22] px-3 py-1 rounded border border-[#2e3442]">
-            <Radio size={12} className={lastActivity ? 'text-amber-400 animate-ping' : 'text-neutral-600'} />
-            <span className="text-neutral-400">Signal reçu :</span>
-            {lastActivity ? (
-              <span className="text-amber-300 font-bold">
-                {lastActivity.type.toUpperCase()} #{lastActivity.paramNumber} (Val: {lastActivity.value})
-                {lastActivity.targetMapped && <span className="text-cyan-400 ml-1">→ {lastActivity.targetMapped}</span>}
-              </span>
-            ) : (
-              <span className="text-neutral-500 italic">En attente d'un mouvement...</span>
-            )}
-          </div>
+          {!isConnected && (
+            <div className="p-2 rounded bg-amber-950/50 border border-amber-600/60 text-amber-200 text-[10px] leading-relaxed">
+              ⚠️ <strong>Si votre Launch Control n'est pas détecté sur le site déployé :</strong>
+              <br />
+              1. <strong>Sur Windows, le pilote USB MIDI est exclusif (mono-client)</strong> : fermez tout autre onglet ouvert sur <code>localhost:5173</code> ou tout logiciel audio (Ableton, Components) qui verrouille déjà le Launch Control, puis cliquez sur <strong>RE-SCANNER USB MIDI</strong>.
+              <br />
+              2. Vérifiez l'icône <strong>Cadenas / Paramètres de site</strong> à gauche de l'URL dans Chrome/Edge et autorisez <strong>Appareils MIDI</strong>.
+              {midiError && <div className="text-rose-400 mt-1">Détail : {midiError}</div>}
+            </div>
+          )}
         </div>
 
         {/* Fast Profile Presets */}

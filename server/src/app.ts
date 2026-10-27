@@ -26,7 +26,12 @@ const hasClientDist = fs.existsSync(path.join(clientDistPath, 'index.html'));
 export const app = express();
 export const ytDlp = new YtDlpService();
 
-// Enable CORS for all origins with exposed headers
+// Enable CORS and explicit Permissions-Policy for Web MIDI, Camera & Screen Capture on Render
+app.use((_req, res, next) => {
+  res.setHeader('Permissions-Policy', 'midi=(self *), camera=(self *), microphone=(self *), display-capture=(self *)');
+  next();
+});
+
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS', 'HEAD'],

@@ -205,6 +205,7 @@ export class MidiEngine {
   private midiAccess: any = null;
   private isConnected = false;
   private deviceName: string = 'No Device';
+  private lastError: string | null = null;
   private customCcMap: Record<number, MidiTarget> = {};
   private customNoteMap: Record<number, MidiTarget> = {};
   private activeProfileId: string = 'auto';
@@ -222,20 +223,35 @@ export class MidiEngine {
 
   public init(dispatch: MidiDispatchFn) {
     this.dispatchFn = dispatch;
+    this.connect();
+  }
 
-    if (typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator) {
-      (navigator as any).requestMIDIAccess({ sysex: false })
-        .then((access: any) => {
-          this.midiAccess = access;
-          this.setupInputs();
-          access.onstatechange = () => {
-            this.setupInputs();
-          };
-        })
-        .catch((err: any) => {
-          console.warn('[Web MIDI] Access denied or unsupported:', err);
-        });
+  public async connect(): Promise<boolean> {
+    if (typeof navigator === 'undefined' || !('requestMIDIAccess' in navigator)) {
+      this.lastError = 'Web MIDI non supporté par ce navigateur (utilisez Chrome, Edge ou Brave en HTTPS).';
+      this.stateChangeListeners.forEach((cb) => cb(false, this.deviceName));
+      return false;
     }
+
+    try {
+      this.lastError = null;
+      const access = await (navigator as any).requestMIDIAccess({ sysex: false });
+      this.midiAccess = access;
+      this.setupInputs();
+      access.onstatechange = () => {
+        this.setupInputs();
+      };
+      return this.isConnected;
+    } catch (err: any) {
+      this.lastError = err?.message || 'Permission Web MIDI refusée dans le navigateur.';
+      console.warn('[Web MIDI] Access denied or unsupported:', err);
+      this.stateChangeListeners.forEach((cb) => cb(false, this.deviceName));
+      return false;
+    }
+  }
+
+  public getLastError(): string | null {
+    return this.lastError;
   }
 
   public onActivity(cb: (event: MidiActivityEvent) => void) {
@@ -302,22 +318,28 @@ export class MidiEngine {
     if (!this.midiAccess) return;
 
     let found = false;
-    let firstName = 'MIDI Controller';
+    let preferredName = '';
 
     for (const input of this.midiAccess.inputs.values()) {
       found = true;
-      firstName = input.name || 'MIDI Controller';
-      this.deviceName = firstName;
+      const name: string = input.name || 'MIDI Controller';
+      if (!preferredName || name.toLowerCase().includes('launch control')) {
+        preferredName = name;
+      }
 
-      console.log(`%c[Web MIDI] Connected device: ${input.name} (${input.manufacturer || 'Generic'})`, 'color: #ff9d00; font-weight: bold;');
+      if (typeof input.open === 'function') {
+        try {
+          input.open();
+        } catch {}
+      }
 
-      input.onmidimessage = (msg: any) => this.handleMidiMessage(msg, input.name || firstName);
+      console.log(`%c[Web MIDI] Connected device: ${name} (${input.manufacturer || 'Generic'})`, 'color: #ff9d00; font-weight: bold;');
+
+      input.onmidimessage = (msg: any) => this.handleMidiMessage(msg, name);
     }
 
     this.isConnected = found;
-    if (!found) {
-      this.deviceName = 'No Device';
-    }
+    this.deviceName = found ? (preferredName || 'MIDI Controller') : 'No Device';
 
     this.stateChangeListeners.forEach(cb => cb(this.isConnected, this.deviceName));
   }

@@ -1606,7 +1606,10 @@ export const App: React.FC = () => {
           }}
           onApplyPreset={handleApplyPreset}
           onRandomize={handleRandomize}
-          onOpenMidiModal={() => setIsMidiModalOpen(true)}
+          onOpenMidiModal={() => {
+            midiEngineRef.current?.connect();
+            setIsMidiModalOpen(true);
+          }}
         />
       </div>
 
