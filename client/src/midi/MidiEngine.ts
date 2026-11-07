@@ -90,28 +90,28 @@ export const LAUNCH_CONTROL_BANKS: LaunchControlBank[] = [
   },
   {
     id: 2,
-    name: 'BANQUE 3/3 — SUITE LIGNE 2 VIDÉO (3D TUNNEL & KICK) + MOD MATRIX & LFOs',
-    shortName: 'BANQUE 3 (3D SUITE & LFO)',
-    description: 'Haut (K1-K8) = Fin Ligne 2 Vidéo (3D Tunnel, Sidechain Kick) + Morph A/B + Chaos Pad X/Y • Bas (K9-K16) = LFO 1/2/Depth/Phase + MASTER',
+    name: 'BANQUE 3/3 — FIN LIGNE 2 VIDÉO (3D TUNNEL & SIDECHAIN KICK EN K7-K8) + AUDIO LIGNE 2 & MASTER',
+    shortName: 'BANQUE 3 (FIN LIGNE 2)',
+    description: 'Haut (K1-K8) = Fin Ligne 2 Vidéo potards 3 à 10 (Scanlines → ... → 3D Tunnel en K7, Sidechain Kick en K8) • Bas (K9-K16) = Audio Ligne 2 + MASTER en K16',
     knobCcMap: {
-      // Top Row (Knobs 1 to 8 — CC 21 to 28): Remaining 2 Video Row 2 Knobs (9 & 10) + Morph & Chaos XY
-      21: 'video.tunnel3d',         // K1: 3D TUNNEL (9ème potard Ligne 2 Vidéo)
-      22: 'video.audioReact',       // K2: SIDECHAIN KICK (10ème potard Ligne 2 Vidéo)
-      23: 'mod.morphAB',            // K3: MORPH A <-> B
-      24: 'mod.macroX',             // K4: CHAOS PAD X
-      25: 'mod.macroY',             // K5: CHAOS PAD Y
-      26: 'video.meshDisplacement', // K6: Rappel 3D Z-EXTRUDE
-      27: 'video.orbit3d',          // K7: Rappel 3D ORBIT/TILT
-      28: 'video.datamosh',         // K8: Rappel DATAMOSH MELT
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Video Row 2 shifted by 2 so Knobs 3..10 of Row 2 map 1:1 up to 3D TUNNEL (K7) & SIDECHAIN KICK (K8)
+      21: 'video.scanlines',        // K1: SCANLINES (3ème potard Ligne 2 Vidéo)
+      22: 'video.colorBleed',       // K2: COLOR BLEED (4ème potard Ligne 2 Vidéo)
+      23: 'video.feedback',         // K3: CAP. FEEDBACK (5ème potard Ligne 2 Vidéo)
+      24: 'video.noise',            // K4: RF NOISE (6ème potard Ligne 2 Vidéo)
+      25: 'video.meshDisplacement', // K5: 3D Z-EXTRUDE (7ème potard Ligne 2 Vidéo)
+      26: 'video.orbit3d',          // K6: 3D ORBIT/TILT (8ème potard Ligne 2 Vidéo)
+      27: 'video.tunnel3d',         // K7: 3D TUNNEL (9ème potard Ligne 2 Vidéo)
+      28: 'video.audioReact',       // K8: SIDECHAIN KICK (10ème potard Ligne 2 Vidéo)
 
-      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): LFO Controls & Master Volume
-      41: 'mod.lfo1Rate',           // K9:  LFO 1 SPEED
-      42: 'mod.lfo2Rate',           // K10: LFO 2 SPEED
-      43: 'mod.lfoDepth',           // K11: LFO GLOBAL DEPTH
-      44: 'mod.phaseSpread',        // K12: LFO PHASE SPREAD
-      45: 'audio.ringModFreq',      // K13: RING MOD FREQ
-      46: 'audio.delayTime',        // K14: TAPE DELAY TIME
-      47: 'audio.reverbWet',        // K15: MALL REVERB
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Audio Row 2 + MASTER on K16
+      41: 'audio.bitcrush',         // K9:  BITCRUSH
+      42: 'audio.drive',            // K10: SMOOTH DRIVE
+      43: 'audio.ringModMix',       // K11: RING MOD
+      44: 'audio.filterCutoff',     // K12: CUTOFF
+      45: 'audio.filterResonance',  // K13: RESONANCE Q
+      46: 'audio.tapeHiss',         // K14: TAPE HISS
+      47: 'audio.tapeDropouts',     // K15: TAPE DROPOUT
       48: 'audio.masterVolume'      // K16: MASTER
     }
   }
@@ -285,7 +285,7 @@ export const GENERIC_PROFILE: MidiProfile = {
   }
 };
 
-const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v11';
+const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v12';
 
 // Novation Launch Control Bi-Color LED Velocities (Red/Green/Amber)
 export const LC_COLOR = {
