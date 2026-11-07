@@ -30,87 +30,89 @@ export interface MidiLedState {
   activeBank: number;
 }
 
-// Novation Launch Control (Original 16-Knob, non-XL) — 3 Ergonomic Knob Banks (3 x 16 = 48 Controls)
+// Novation Launch Control (Original 16-Knob, non-XL) — 100% 1:1 Screen Order Mapping:
+// Top Row (K1..K8) = Video Knobs in exact left-to-right screen order
+// Bottom Row (K9..K16) = Audio Knobs in exact left-to-right screen order (+ Master on K16)
 export const LAUNCH_CONTROL_BANKS: LaunchControlBank[] = [
   {
     id: 0,
-    name: 'BANQUE 1/3 — LIVE PERFORMANCE (3D, GLITCH, AUDIO & MASTER)',
-    shortName: 'BANQUE 1 (LIVE & MASTER)',
-    description: 'Haut : 3D (K1-K3) → Datamosh/Glitch/RGB/Feedback (K4-K7) → Audio-React (K8) • Bas : Speed (K9) → Filter Cutoff/Res (K10-K11) → Reverb/Delay/Wow (K12-K14) → Morph (K15) → MASTER VOL (K16)',
+    name: 'BANQUE 1/3 — LIGNE 1 ÉCRAN (VIDÉO LIGNE 1 EN HAUT / AUDIO LIGNE 1 + MASTER EN BAS)',
+    shortName: 'BANQUE 1 (LIGNE 1 ÉCRAN)',
+    description: 'Haut (K1-K8) = 1. CRT TUBE & VHS PHYSICS (ordre exact écran) • Bas (K9-K16) = 1. TAPE & REVERB + MASTER (ordre exact écran)',
     knobCcMap: {
-      // Top Row (Knobs 1 to 8 — CC 21 to 28): Left = 3D, Center = Glitch/Mosh, Right = Audio-React
-      21: 'video.meshDisplacement', // K1 (Col 1): 3D Z-Extrude (Rutt-Etra Relief)
-      22: 'video.orbit3d',          // K2 (Col 2): 3D Orbit / Tilt Camera
-      23: 'video.tunnel3d',         // K3 (Col 3): 3D Infinite Mirror Tunnel
-      24: 'video.datamosh',         // K4 (Col 4): Temporal Datamosh Melt
-      25: 'video.glitchIntensity',  // K5 (Col 5): H-Sync Loss / Glitch
-      26: 'video.rgbShift',         // K6 (Col 6): RGB Channel Shift
-      27: 'video.feedback',         // K7 (Col 7): Capacitive Feedback Trails
-      28: 'video.audioReact',       // K8 (Col 8 - Far Right Top): Sidechain Kick Audio-Reactivity
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Exact order of Video Row 1 ("1. CRT TUBE & VHS PHYSICS") on screen
+      21: 'video.crtCurvature',     // K1: CRT CURVATURE
+      22: 'video.vaporwaveTint',    // K2: VAPORWAVE TINT
+      23: 'video.luminance',        // K3: LUMINANCE
+      24: 'video.apertureGrille',   // K4: PHOSPHOR MASK
+      25: 'video.chromaSmear',      // K5: CHROMA SMEAR
+      26: 'video.vhsHeadSwitching', // K6: HEAD SWITCHING
+      27: 'video.vHoldDrift',       // K7: V-HOLD DRIFT
+      28: 'video.datamosh',         // K8: DATAMOSH MELT
 
-      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Left = Speed & Filter, Center = Space, Far Right = Morph & MASTER VOLUME
-      41: 'audio.tapeSpeed',        // K9  (Col 1): Tape Playback Speed (0.5x - 1.5x)
-      42: 'audio.filterCutoff',     // K10 (Col 2): Filter Cutoff (80Hz - 18kHz)
-      43: 'audio.filterResonance',  // K11 (Col 3): Filter Resonance (Q) — right next to Cutoff!
-      44: 'audio.reverbWet',        // K12 (Col 4): Abandoned Mall Reverb
-      45: 'audio.delayTime',        // K13 (Col 5): Tape Echo / Delay Time — right next to Reverb!
-      46: 'audio.wowDepth',         // K14 (Col 6): Wow Detune Depth
-      47: 'mod.morphAB',            // K15 (Col 7): Crossfader Morphing (Patch A <-> B)
-      48: 'audio.masterVolume'      // K16 (Col 8 - Far Right Bottom): MASTER VOLUME (Always bottom-right!)
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Exact order of Audio Row 1 ("1. TAPE & REVERB") + MASTER on screen
+      41: 'audio.tapeSpeed',        // K9:  TAPE SPEED
+      42: 'audio.wowRate',          // K10: WOW RATE
+      43: 'audio.wowDepth',         // K11: WOW DEPTH
+      44: 'audio.flutterRate',      // K12: FLUTTER RATE
+      45: 'audio.flutterDepth',     // K13: FLUTTER DEPTH
+      46: 'audio.tapeTone',         // K14: TAPE TONE
+      47: 'audio.reverbWet',        // K15: MALL REVERB
+      48: 'audio.masterVolume'      // K16: MASTER (Tout à droite à l'écran)
     }
   },
   {
     id: 1,
-    name: 'BANQUE 2/3 — TUBE CRT, VHS & SATURATION / CASSETTE LO-FI',
-    shortName: 'BANQUE 2 (CRT & VHS)',
-    description: 'Haut : Géométrie CRT (K1-K3) → Usure VHS (K4-K5) → Couleurs VHS (K6-K8) • Bas : Drive/Crush (K9-K10) → Ring-Mod Mix/Freq (K11-K12) → Tape Tone/Hiss/Dropouts (K13-K15) → Stutter Speed (K16)',
+    name: 'BANQUE 2/3 — LIGNE 2 ÉCRAN (VIDÉO LIGNE 2 EN HAUT / AUDIO LIGNE 2 EN BAS)',
+    shortName: 'BANQUE 2 (LIGNE 2 ÉCRAN)',
+    description: 'Haut (K1-K8) = 2. GLITCH & 3D (potards 1 à 8 dans l’ordre écran) • Bas (K9-K16) = 2. DRIVE & CIRCUIT (les 8 potards dans l’ordre écran)',
     knobCcMap: {
-      // Top Row (Knobs 1 to 8 — CC 21 to 28): Left = CRT Geometry, Center = VHS Sync, Right = VHS Color
-      21: 'video.crtCurvature',     // K1 (Col 1): CRT Tube Curvature
-      22: 'video.scanlines',        // K2 (Col 2): CRT Scanlines
-      23: 'video.apertureGrille',   // K3 (Col 3): Phosphor Mask (Aperture Grille)
-      24: 'video.vhsHeadSwitching', // K4 (Col 4): VHS Head Switching Noise
-      25: 'video.vHoldDrift',       // K5 (Col 5): V-Hold Vertical Sync Drift
-      26: 'video.chromaSmear',      // K6 (Col 6): Chroma Beam Smear
-      27: 'video.colorBleed',       // K7 (Col 7): VHS Color Bleed
-      28: 'video.vaporwaveTint',    // K8 (Col 8): Vaporwave Pastel Tint
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Exact order of Video Row 2 ("2. GLITCH & 3D", Knobs 1..8) on screen
+      21: 'video.glitchIntensity',  // K1: H-SYNC LOSS
+      22: 'video.rgbShift',         // K2: RGB SHIFT
+      23: 'video.scanlines',        // K3: SCANLINES
+      24: 'video.colorBleed',       // K4: COLOR BLEED
+      25: 'video.feedback',         // K5: CAP. FEEDBACK
+      26: 'video.noise',            // K6: RF NOISE
+      27: 'video.meshDisplacement', // K7: 3D Z-EXTRUDE
+      28: 'video.orbit3d',          // K8: 3D ORBIT/TILT
 
-      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Left = Distortion/RingMod, Right = Tape Wear & Stutter Speed
-      41: 'audio.drive',            // K9  (Col 1): Analog Tape Saturation Drive
-      42: 'audio.bitcrush',         // K10 (Col 2): 8-Bit Lo-Fi Crush
-      43: 'audio.ringModMix',       // K11 (Col 3): Ring Modulator Wet Mix
-      44: 'audio.ringModFreq',      // K12 (Col 4): Ring Modulator Carrier Freq — right next to Mix!
-      45: 'audio.tapeTone',         // K13 (Col 5): Ferric Tape Head Bump EQ
-      46: 'audio.tapeHiss',         // K14 (Col 6): Analog Tape Hiss Floor
-      47: 'audio.tapeDropouts',     // K15 (Col 7): Magnetic Tape Micro-Dropouts
-      48: 'audio.stutterSpeed'      // K16 (Col 8): Freeze Stutter Slice Speed (controls Pad 2 Stutter rate!)
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Exact order of Audio Row 2 ("2. DRIVE & CIRCUIT", Knobs 1..8) on screen
+      41: 'audio.bitcrush',         // K9:  BITCRUSH
+      42: 'audio.drive',            // K10: SMOOTH DRIVE
+      43: 'audio.ringModMix',       // K11: RING MOD
+      44: 'audio.filterCutoff',     // K12: CUTOFF
+      45: 'audio.filterResonance',  // K13: RESONANCE Q
+      46: 'audio.tapeHiss',         // K14: TAPE HISS
+      47: 'audio.tapeDropouts',     // K15: TAPE DROPOUT
+      48: 'audio.stutterSpeed'      // K16: STUTTER SIZE
     }
   },
   {
     id: 2,
-    name: 'BANQUE 3/3 — SERUM LFOs, CHAOS PAD XY & FINITION',
-    shortName: 'BANQUE 3 (LFO & XY)',
-    description: 'Haut : LFO 1/2/Depth/Phase (K1-K4) → Chaos Pad X & Y (K5-K6) → Solarize & RF Noise (K7-K8) • Bas : Wow/Flutter Osc (K9-K11) → Rappels Live & MASTER VOL (K16)',
+    name: 'BANQUE 3/3 — SUITE LIGNE 2 VIDÉO (3D TUNNEL & KICK) + MOD MATRIX & LFOs',
+    shortName: 'BANQUE 3 (3D SUITE & LFO)',
+    description: 'Haut (K1-K8) = Fin Ligne 2 Vidéo (3D Tunnel, Sidechain Kick) + Morph A/B + Chaos Pad X/Y • Bas (K9-K16) = LFO 1/2/Depth/Phase + MASTER',
     knobCcMap: {
-      // Top Row (Knobs 1 to 8 — CC 21 to 28): Left = LFO 1 & 2, Center = Chaos XY Pad, Right = Solarize & RF Noise
-      21: 'mod.lfo1Rate',           // K1 (Col 1): LFO 1 Speed (0.1Hz - 12Hz)
-      22: 'mod.lfo2Rate',           // K2 (Col 2): LFO 2 Speed (0.1Hz - 12Hz)
-      23: 'mod.lfoDepth',           // K3 (Col 3): LFO Global Depth
-      24: 'mod.phaseSpread',        // K4 (Col 4): LFO Multi-Target Phase Spread
-      25: 'mod.macroX',             // K5 (Col 5): Vector Chaos Pad X
-      26: 'mod.macroY',             // K6 (Col 6): Vector Chaos Pad Y — right next to X!
-      27: 'video.luminance',        // K7 (Col 7): Luminance & Solarization
-      28: 'video.noise',            // K8 (Col 8): Analog RF Static Noise
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Remaining 2 Video Row 2 Knobs (9 & 10) + Morph & Chaos XY
+      21: 'video.tunnel3d',         // K1: 3D TUNNEL (9ème potard Ligne 2 Vidéo)
+      22: 'video.audioReact',       // K2: SIDECHAIN KICK (10ème potard Ligne 2 Vidéo)
+      23: 'mod.morphAB',            // K3: MORPH A <-> B
+      24: 'mod.macroX',             // K4: CHAOS PAD X
+      25: 'mod.macroY',             // K5: CHAOS PAD Y
+      26: 'video.meshDisplacement', // K6: Rappel 3D Z-EXTRUDE
+      27: 'video.orbit3d',          // K7: Rappel 3D ORBIT/TILT
+      28: 'video.datamosh',         // K8: Rappel DATAMOSH MELT
 
-      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Left = Wow/Flutter Osc, Right = Live Recall & MASTER VOLUME
-      41: 'audio.wowRate',          // K9  (Col 1): Wow Oscillator Rate
-      42: 'audio.flutterDepth',     // K10 (Col 2): Flutter Vibration Depth
-      43: 'audio.flutterRate',      // K11 (Col 3): Flutter Oscillator Rate — right next to Depth!
-      44: 'audio.tapeSpeed',        // K12 (Col 4): Quick Tape Speed
-      45: 'audio.filterCutoff',     // K13 (Col 5): Quick Filter Cutoff
-      46: 'audio.reverbWet',        // K14 (Col 6): Quick Mall Reverb
-      47: 'mod.morphAB',            // K15 (Col 7): Quick Crossfader Morph A <-> B
-      48: 'audio.masterVolume'      // K16 (Col 8 - Far Right Bottom): MASTER VOLUME (Always bottom-right!)
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): LFO Controls & Master Volume
+      41: 'mod.lfo1Rate',           // K9:  LFO 1 SPEED
+      42: 'mod.lfo2Rate',           // K10: LFO 2 SPEED
+      43: 'mod.lfoDepth',           // K11: LFO GLOBAL DEPTH
+      44: 'mod.phaseSpread',        // K12: LFO PHASE SPREAD
+      45: 'audio.ringModFreq',      // K13: RING MOD FREQ
+      46: 'audio.delayTime',        // K14: TAPE DELAY TIME
+      47: 'audio.reverbWet',        // K15: MALL REVERB
+      48: 'audio.masterVolume'      // K16: MASTER
     }
   }
 ];
@@ -283,7 +285,7 @@ export const GENERIC_PROFILE: MidiProfile = {
   }
 };
 
-const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v10';
+const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v11';
 
 // Novation Launch Control Bi-Color LED Velocities (Red/Green/Amber)
 export const LC_COLOR = {
