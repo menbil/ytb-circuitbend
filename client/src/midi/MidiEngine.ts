@@ -30,87 +30,87 @@ export interface MidiLedState {
   activeBank: number;
 }
 
-// Novation Launch Control (Original 16-Knob, non-XL) — 3 Knob Banks (3 x 16 = 48 Knobs covering 100% of the studio!)
+// Novation Launch Control (Original 16-Knob, non-XL) — 3 Ergonomic Knob Banks (3 x 16 = 48 Controls)
 export const LAUNCH_CONTROL_BANKS: LaunchControlBank[] = [
   {
     id: 0,
-    name: 'BANQUE 1/3 — 3D, GLITCH & AUDIO PRINCIPAL',
-    shortName: 'BANQUE 1 (3D & MAIN)',
-    description: 'Rangée 1 : Glitch, RGB, Datamosh, 3D Z-Extrude, 3D Orbit, 3D Tunnel, Feedback, Vapor • Rangée 2 : Speed, Filter, Reverb, Wow, Drive, Crush, Morph',
+    name: 'BANQUE 1/3 — LIVE PERFORMANCE (3D, GLITCH, AUDIO & MASTER)',
+    shortName: 'BANQUE 1 (LIVE & MASTER)',
+    description: 'Haut : 3D (K1-K3) → Datamosh/Glitch/RGB/Feedback (K4-K7) → Audio-React (K8) • Bas : Speed (K9) → Filter Cutoff/Res (K10-K11) → Reverb/Delay/Wow (K12-K14) → Morph (K15) → MASTER VOL (K16)',
     knobCcMap: {
-      // Top Row (Knobs 1 to 8 — CC 21 to 28): Main Video & 3D Shaders
-      21: 'video.glitchIntensity',  // K1: H-Sync Loss / Glitch
-      22: 'video.rgbShift',         // K2: RGB Channel Shift
-      23: 'video.datamosh',         // K3: Temporal Datamosh Melt
-      24: 'video.meshDisplacement', // K4: 3D Z-Extrude (Rutt-Etra Relief)
-      25: 'video.orbit3d',          // K5: 3D Orbit / Tilt Camera
-      26: 'video.tunnel3d',         // K6: 3D Infinite Mirror Tunnel
-      27: 'video.feedback',         // K7: Capacitive Feedback Trails
-      28: 'video.vaporwaveTint',    // K8: Vaporwave Pastel Tint
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Left = 3D, Center = Glitch/Mosh, Right = Audio-React
+      21: 'video.meshDisplacement', // K1 (Col 1): 3D Z-Extrude (Rutt-Etra Relief)
+      22: 'video.orbit3d',          // K2 (Col 2): 3D Orbit / Tilt Camera
+      23: 'video.tunnel3d',         // K3 (Col 3): 3D Infinite Mirror Tunnel
+      24: 'video.datamosh',         // K4 (Col 4): Temporal Datamosh Melt
+      25: 'video.glitchIntensity',  // K5 (Col 5): H-Sync Loss / Glitch
+      26: 'video.rgbShift',         // K6 (Col 6): RGB Channel Shift
+      27: 'video.feedback',         // K7 (Col 7): Capacitive Feedback Trails
+      28: 'video.audioReact',       // K8 (Col 8 - Far Right Top): Sidechain Kick Audio-Reactivity
 
-      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Core Audio DSP & Morph
-      41: 'audio.tapeSpeed',        // K9: Tape Playback Speed (0.5x - 1.5x)
-      42: 'audio.filterCutoff',     // K10: Filter Cutoff (80Hz - 18kHz)
-      43: 'audio.filterResonance',  // K11: Filter Resonance (Q)
-      44: 'audio.reverbWet',        // K12: Abandoned Mall Reverb
-      45: 'audio.wowDepth',         // K13: Wow Detune Depth
-      46: 'audio.drive',            // K14: Analog Tape Saturation Drive
-      47: 'audio.bitcrush',         // K15: 8-Bit Lo-Fi Crush
-      48: 'mod.morphAB'             // K16: Crossfader Morphing (Patch A <-> B)
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Left = Speed & Filter, Center = Space, Far Right = Morph & MASTER VOLUME
+      41: 'audio.tapeSpeed',        // K9  (Col 1): Tape Playback Speed (0.5x - 1.5x)
+      42: 'audio.filterCutoff',     // K10 (Col 2): Filter Cutoff (80Hz - 18kHz)
+      43: 'audio.filterResonance',  // K11 (Col 3): Filter Resonance (Q) — right next to Cutoff!
+      44: 'audio.reverbWet',        // K12 (Col 4): Abandoned Mall Reverb
+      45: 'audio.delayTime',        // K13 (Col 5): Tape Echo / Delay Time — right next to Reverb!
+      46: 'audio.wowDepth',         // K14 (Col 6): Wow Detune Depth
+      47: 'mod.morphAB',            // K15 (Col 7): Crossfader Morphing (Patch A <-> B)
+      48: 'audio.masterVolume'      // K16 (Col 8 - Far Right Bottom): MASTER VOLUME (Always bottom-right!)
     }
   },
   {
     id: 1,
-    name: 'BANQUE 2/3 — CRT/VHS & TAPE DECK / RING-MOD',
-    shortName: 'BANQUE 2 (CRT & TAPE)',
-    description: 'Rangée 1 : Scanlines, CRT Curve, Phosphor, Color Bleed, Chroma Smear, VHS Head, V-Hold, Solarize • Rangée 2 : Flutter, Tape Tone/Hiss/Dropouts, Stutter, RingMod, Delay',
+    name: 'BANQUE 2/3 — TUBE CRT, VHS & SATURATION / CASSETTE LO-FI',
+    shortName: 'BANQUE 2 (CRT & VHS)',
+    description: 'Haut : Géométrie CRT (K1-K3) → Usure VHS (K4-K5) → Couleurs VHS (K6-K8) • Bas : Drive/Crush (K9-K10) → Ring-Mod Mix/Freq (K11-K12) → Tape Tone/Hiss/Dropouts (K13-K15) → Stutter Speed (K16)',
     knobCcMap: {
-      // Top Row (Knobs 1 to 8 — CC 21 to 28): CRT Tube & VHS Tape Artifacts
-      21: 'video.scanlines',        // K1: CRT Scanlines
-      22: 'video.crtCurvature',     // K2: CRT Tube Curvature
-      23: 'video.apertureGrille',   // K3: Phosphor Mask (Aperture Grille)
-      24: 'video.colorBleed',       // K4: VHS Color Bleed
-      25: 'video.chromaSmear',      // K5: Chroma Beam Smear
-      26: 'video.vhsHeadSwitching', // K6: VHS Head Switching Noise
-      27: 'video.vHoldDrift',       // K7: V-Hold Vertical Sync Drift
-      28: 'video.luminance',        // K8: Luminance & Solarization
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Left = CRT Geometry, Center = VHS Sync, Right = VHS Color
+      21: 'video.crtCurvature',     // K1 (Col 1): CRT Tube Curvature
+      22: 'video.scanlines',        // K2 (Col 2): CRT Scanlines
+      23: 'video.apertureGrille',   // K3 (Col 3): Phosphor Mask (Aperture Grille)
+      24: 'video.vhsHeadSwitching', // K4 (Col 4): VHS Head Switching Noise
+      25: 'video.vHoldDrift',       // K5 (Col 5): V-Hold Vertical Sync Drift
+      26: 'video.chromaSmear',      // K6 (Col 6): Chroma Beam Smear
+      27: 'video.colorBleed',       // K7 (Col 7): VHS Color Bleed
+      28: 'video.vaporwaveTint',    // K8 (Col 8): Vaporwave Pastel Tint
 
-      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Deep Tape Deck & Ring Modulator
-      41: 'audio.flutterDepth',     // K9: Flutter Vibration Depth
-      42: 'audio.tapeTone',         // K10: Ferric Tape Head Bump EQ
-      43: 'audio.tapeHiss',         // K11: Analog Tape Hiss Floor
-      44: 'audio.tapeDropouts',     // K12: Magnetic Tape Micro-Dropouts
-      45: 'audio.stutterSpeed',     // K13: Freeze Granular Slice Speed
-      46: 'audio.ringModMix',       // K14: Ring Modulator Wet Mix
-      47: 'audio.ringModFreq',      // K15: Ring Modulator Carrier Freq
-      48: 'audio.delayTime'         // K16: Tape Echo / Delay Time
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Left = Distortion/RingMod, Right = Tape Wear & Stutter Speed
+      41: 'audio.drive',            // K9  (Col 1): Analog Tape Saturation Drive
+      42: 'audio.bitcrush',         // K10 (Col 2): 8-Bit Lo-Fi Crush
+      43: 'audio.ringModMix',       // K11 (Col 3): Ring Modulator Wet Mix
+      44: 'audio.ringModFreq',      // K12 (Col 4): Ring Modulator Carrier Freq — right next to Mix!
+      45: 'audio.tapeTone',         // K13 (Col 5): Ferric Tape Head Bump EQ
+      46: 'audio.tapeHiss',         // K14 (Col 6): Analog Tape Hiss Floor
+      47: 'audio.tapeDropouts',     // K15 (Col 7): Magnetic Tape Micro-Dropouts
+      48: 'audio.stutterSpeed'      // K16 (Col 8): Freeze Stutter Slice Speed (controls Pad 2 Stutter rate!)
     }
   },
   {
     id: 2,
-    name: 'BANQUE 3/3 — AUDIO-REACT, SERUM LFOs & CHAOS XY',
+    name: 'BANQUE 3/3 — SERUM LFOs, CHAOS PAD XY & FINITION',
     shortName: 'BANQUE 3 (LFO & XY)',
-    description: 'Rangée 1 : RF Noise, Audio-React, Chaos Pad X & Y, LFO 1 & 2 Speed, LFO Depth & Phase • Rangée 2 : Wow/Flutter Rate, Master Vol & Rappels 3D',
+    description: 'Haut : LFO 1/2/Depth/Phase (K1-K4) → Chaos Pad X & Y (K5-K6) → Solarize & RF Noise (K7-K8) • Bas : Wow/Flutter Osc (K9-K11) → Rappels Live & MASTER VOL (K16)',
     knobCcMap: {
-      // Top Row (Knobs 1 to 8 — CC 21 to 28): Audio-React, RF Noise & Serum LFOs / XY Pad
-      21: 'video.noise',            // K1: Analog RF Static Noise
-      22: 'video.audioReact',       // K2: Sidechain Kick Audio-Reactivity
-      23: 'mod.macroX',             // K3: Vector Chaos Pad X
-      24: 'mod.macroY',             // K4: Vector Chaos Pad Y
-      25: 'mod.lfo1Rate',           // K5: LFO 1 Speed (0.1Hz - 12Hz)
-      26: 'mod.lfo2Rate',           // K6: LFO 2 Speed (0.1Hz - 12Hz)
-      27: 'mod.lfoDepth',           // K7: LFO Global Depth
-      28: 'mod.phaseSpread',        // K8: LFO Multi-Target Phase Spread
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Left = LFO 1 & 2, Center = Chaos XY Pad, Right = Solarize & RF Noise
+      21: 'mod.lfo1Rate',           // K1 (Col 1): LFO 1 Speed (0.1Hz - 12Hz)
+      22: 'mod.lfo2Rate',           // K2 (Col 2): LFO 2 Speed (0.1Hz - 12Hz)
+      23: 'mod.lfoDepth',           // K3 (Col 3): LFO Global Depth
+      24: 'mod.phaseSpread',        // K4 (Col 4): LFO Multi-Target Phase Spread
+      25: 'mod.macroX',             // K5 (Col 5): Vector Chaos Pad X
+      26: 'mod.macroY',             // K6 (Col 6): Vector Chaos Pad Y — right next to X!
+      27: 'video.luminance',        // K7 (Col 7): Luminance & Solarization
+      28: 'video.noise',            // K8 (Col 8): Analog RF Static Noise
 
-      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Oscillator Rates, Master Vol & Quick 3D Access
-      41: 'audio.wowRate',          // K9: Wow Oscillator Rate
-      42: 'audio.flutterRate',      // K10: Flutter Oscillator Rate
-      43: 'audio.masterVolume',     // K11: Master Output Volume
-      44: 'video.meshDisplacement', // K12: Quick 3D Z-Extrude
-      45: 'video.orbit3d',          // K13: Quick 3D Orbit/Tilt
-      46: 'video.tunnel3d',         // K14: Quick 3D Tunnel
-      47: 'video.datamosh',         // K15: Quick Datamosh Melt
-      48: 'mod.morphAB'             // K16: Quick Crossfader Morph A <-> B
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Left = Wow/Flutter Osc, Right = Live Recall & MASTER VOLUME
+      41: 'audio.wowRate',          // K9  (Col 1): Wow Oscillator Rate
+      42: 'audio.flutterDepth',     // K10 (Col 2): Flutter Vibration Depth
+      43: 'audio.flutterRate',      // K11 (Col 3): Flutter Oscillator Rate — right next to Depth!
+      44: 'audio.tapeSpeed',        // K12 (Col 4): Quick Tape Speed
+      45: 'audio.filterCutoff',     // K13 (Col 5): Quick Filter Cutoff
+      46: 'audio.reverbWet',        // K14 (Col 6): Quick Mall Reverb
+      47: 'mod.morphAB',            // K15 (Col 7): Quick Crossfader Morph A <-> B
+      48: 'audio.masterVolume'      // K16 (Col 8 - Far Right Bottom): MASTER VOLUME (Always bottom-right!)
     }
   }
 ];
@@ -122,21 +122,21 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
   ccMap: {
     ...LAUNCH_CONTROL_BANKS[0].knobCcMap,
 
-    // CC Mode for Pads (Novation Launch Control CC 73 to 80)
-    73: 'action.playToggle',   // Pad 1: Play / Pause (LED Vert)
-    74: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze (LED Orange)
-    75: 'action.randomize',    // Pad 3: Randomize Procedural Patch (LED Jaune)
-    76: 'action.resetClean',   // Pad 4: Reset Clean / Bypass All FX (LED Vert)
-    77: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot (Flash LED)
-    78: 'action.recordToggle', // Pad 6: Video Session Record MP4 (LED Rouge Vif !)
-    79: 'action.lfoToggle',    // Pad 7: Activer / Désactiver Moteur LFO (LED Ambre)
-    80: 'action.preset5',      // Pad 8: Preset Rutt-Etra 3D Relief (LED Ambre)
+    // CC Mode for Pads (Novation Launch Control CC 73 to 80 — Left-to-Right: Transport -> Live FX -> Capture/REC on Far Right!)
+    73: 'action.playToggle',    // Pad 1 (Far Left): Play / Pause (LED Vert)
+    74: 'action.tapeFreeze',    // Pad 2: Tape Brake + Continuous Stutter Loop (LED Orange)
+    75: 'action.punchDatamosh', // Pad 3: Live Punch-In Datamosh + Glitch FX (LED Rouge)
+    76: 'action.randomize',     // Pad 4: Randomize Procedural Patch (LED Jaune)
+    77: 'action.resetClean',    // Pad 5: Reset Clean / Bypass All FX (LED Vert)
+    78: 'action.lfoToggle',     // Pad 6: Activer / Désactiver Moteur LFO (LED Vert)
+    79: 'action.snapshot',      // Pad 7: Polaroid Photo Snapshot (Flash LED Jaune)
+    80: 'action.recordToggle',  // Pad 8 (Far Right, under Master Vol): Video Session Record MP4 (LED Rouge Vif !)
 
     // 4 Directional Arrow Buttons on the right of Launch Control (CC 114 to 117)
-    114: 'action.bankPrev',    // Flèche Haut (▲): Banque de Potards Précédente (1 <-> 2 <-> 3)
-    115: 'action.bankNext',    // Flèche Bas (▼): Banque de Potards Suivante (1 <-> 2 <-> 3)
-    116: 'action.prevTrack',   // Flèche Gauche (◄): Vidéo Précédente
-    117: 'action.nextTrack',   // Flèche Droite (►): Vidéo Suivante
+    114: 'action.bankPrev',     // Flèche Haut (▲): Banque de Potards Précédente (1 <-> 2 <-> 3)
+    115: 'action.bankNext',     // Flèche Bas (▼): Banque de Potards Suivante (1 <-> 2 <-> 3)
+    116: 'action.prevTrack',    // Flèche Gauche (◄): Vidéo Précédente
+    117: 'action.nextTrack',    // Flèche Droite (►): Vidéo Suivante
     118: 'action.vcrOsdToggle',
     119: 'action.recordToggle',
     120: 'action.preset3',
@@ -144,49 +144,49 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
   },
   noteMap: {
     // Factory Template 1: Pads 1-4 (Notes 9..12) & Pads 5-8 (Notes 25..28)
-    9: 'action.playToggle',    // Pad 1: Play / Pause
-    10: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
-    11: 'action.randomize',    // Pad 3: Randomize Procedural
-    12: 'action.resetClean',   // Pad 4: Reset Clean / Bypass All FX
-    25: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot
-    26: 'action.recordToggle', // Pad 6: Video Session Record (REC MP4)
-    27: 'action.lfoToggle',    // Pad 7: LFO Engine ON/OFF
-    28: 'action.preset5',      // Pad 8: Preset Rutt-Etra 3D
+    9: 'action.playToggle',     // Pad 1: Play / Pause
+    10: 'action.tapeFreeze',    // Pad 2: Tape Brake + Stutter Freeze Loop
+    11: 'action.punchDatamosh', // Pad 3: Punch-In Datamosh + Glitch FX
+    12: 'action.randomize',     // Pad 4: Randomize Procedural Patch
+    25: 'action.resetClean',    // Pad 5: Reset Clean / Bypass All FX
+    26: 'action.lfoToggle',     // Pad 6: LFO Engine ON/OFF
+    27: 'action.snapshot',      // Pad 7: Polaroid Photo Snapshot
+    28: 'action.recordToggle',  // Pad 8 (Far Right): Video Session Record (REC MP4)
 
     // Factory Template 2: Pads 1-4 (Notes 13..16) & Pads 5-8 (Notes 29..32)
     13: 'action.playToggle',
     14: 'action.tapeFreeze',
-    15: 'action.randomize',
-    16: 'action.resetClean',
-    29: 'action.snapshot',
-    30: 'action.recordToggle',
-    31: 'action.lfoToggle',
-    32: 'action.preset5',
+    15: 'action.punchDatamosh',
+    16: 'action.randomize',
+    29: 'action.resetClean',
+    30: 'action.lfoToggle',
+    31: 'action.snapshot',
+    32: 'action.recordToggle',
 
     // Factory Template 3: Pads 1-4 (Notes 17..20) & Pads 5-7 (Notes 33..35)
     17: 'action.playToggle',
     18: 'action.tapeFreeze',
-    19: 'action.randomize',
-    20: 'action.resetClean',
-    33: 'action.snapshot',
-    34: 'action.recordToggle',
-    35: 'action.lfoToggle',
+    19: 'action.punchDatamosh',
+    20: 'action.randomize',
+    33: 'action.resetClean',
+    34: 'action.lfoToggle',
+    35: 'action.snapshot',
 
     // Factory Template 4: Pads 1-4 (Notes 21..24)
     21: 'action.playToggle',
     22: 'action.tapeFreeze',
-    23: 'action.randomize',
-    24: 'action.resetClean',
+    23: 'action.punchDatamosh',
+    24: 'action.randomize',
 
     // User Template: Notes 36..43 (C1..G1 chromatic)
-    36: 'action.playToggle',   // Pad 1
-    37: 'action.tapeFreeze',   // Pad 2 (Tape Stop & Freeze)
-    38: 'action.randomize',    // Pad 3
-    39: 'action.resetClean',   // Pad 4
-    40: 'action.snapshot',     // Pad 5
-    41: 'action.recordToggle', // Pad 6 (REC MP4)
-    42: 'action.lfoToggle',    // Pad 7 (LFO ON/OFF)
-    43: 'action.preset5',      // Pad 8 (Preset Rutt-Etra 3D)
+    36: 'action.playToggle',    // Pad 1
+    37: 'action.tapeFreeze',    // Pad 2 (Tape Brake + Stutter Loop)
+    38: 'action.punchDatamosh', // Pad 3 (Punch-In Datamosh)
+    39: 'action.randomize',     // Pad 4 (Randomize)
+    40: 'action.resetClean',    // Pad 5 (Bypass Clean)
+    41: 'action.lfoToggle',     // Pad 6 (LFO ON/OFF)
+    42: 'action.snapshot',      // Pad 7 (Snapshot Photo)
+    43: 'action.recordToggle',  // Pad 8 (REC MP4 - Far Right)
 
     // Generic 0 & 1
     0: 'action.playToggle',
@@ -283,7 +283,7 @@ export const GENERIC_PROFILE: MidiProfile = {
   }
 };
 
-const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v9';
+const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v10';
 
 // Novation Launch Control Bi-Color LED Velocities (Red/Green/Amber)
 export const LC_COLOR = {

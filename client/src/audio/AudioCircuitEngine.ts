@@ -525,6 +525,9 @@ export class AudioCircuitEngine {
     return this.isTapeStopped || this.isFrozen;
   }
 
+  private freezeAnchorTime: number = 0;
+  private currentStutterSpeed: number = 0.12;
+
   /**
    * Activates or disables the Granular Buffer Stutter / Freeze loop.
    */
@@ -534,22 +537,22 @@ export class AudioCircuitEngine {
     }
     const t = this.ctx.currentTime;
     this.isFrozen = frozen;
+    const safeDuration = Math.max(0.04, Math.min(0.40, sliceDuration));
+    this.currentStutterSpeed = safeDuration;
 
     if (frozen) {
-      const safeDuration = Math.max(0.04, Math.min(0.40, sliceDuration));
       this.stutterDelayNode.delayTime.setValueAtTime(safeDuration, t);
-      // Fade out live input to prevent fresh audio from overwriting the slice
-      this.stutterDryGain.gain.setTargetAtTime(0.0, t, 0.005);
-      this.stutterInputGain.gain.setTargetAtTime(0.0, t, 0.005);
-      // Bring in wet looped slice with high feedback
-      this.stutterWetGain.gain.setTargetAtTime(1.0, t, 0.005);
-      this.stutterFeedbackGain.gain.setTargetAtTime(0.985, t, 0.005);
+      // Keep a blend of live micro-looped input + high-feedback delay resonator so the stutter NEVER decays to silence
+      this.stutterDryGain.gain.setTargetAtTime(0.35, t, 0.008);
+      this.stutterInputGain.gain.setTargetAtTime(0.75, t, 0.008);
+      this.stutterWetGain.gain.setTargetAtTime(1.0, t, 0.006);
+      this.stutterFeedbackGain.gain.setTargetAtTime(0.92, t, 0.006);
     } else {
       // Cleanly restore transparent dry audio
-      this.stutterFeedbackGain.gain.setTargetAtTime(0.0, t, 0.01);
-      this.stutterWetGain.gain.setTargetAtTime(0.0, t, 0.01);
-      this.stutterInputGain.gain.setTargetAtTime(1.0, t, 0.01);
-      this.stutterDryGain.gain.setTargetAtTime(1.0, t, 0.01);
+      this.stutterFeedbackGain.gain.setTargetAtTime(0.0, t, 0.015);
+      this.stutterWetGain.gain.setTargetAtTime(0.0, t, 0.015);
+      this.stutterInputGain.gain.setTargetAtTime(1.0, t, 0.015);
+      this.stutterDryGain.gain.setTargetAtTime(1.0, t, 0.015);
     }
 
     if (onStateChange) onStateChange(this.isFrozen);
@@ -557,7 +560,8 @@ export class AudioCircuitEngine {
   }
 
   /**
-   * Toggles Unified Tape Stop & Buffer Freeze
+   * Toggles Unified Tape Stop Brake + Continuous Beat-Repeat / Stutter Freeze Loop
+   * (Does NOT just pause the video: performs an analog pitch dive into a continuous rhythmic audio/video stutter loop!)
    */
   public toggleTapeFreeze(
     nominalRate: number = 1.0,
@@ -570,7 +574,7 @@ export class AudioCircuitEngine {
       this.connectedElement = media;
     }
 
-    // Clear any active deceleration / acceleration
+    // Clear any active deceleration / stutter timer
     if (this.tapeInterval) {
       clearInterval(this.tapeInterval);
       this.tapeInterval = null;
@@ -579,29 +583,51 @@ export class AudioCircuitEngine {
     const currentlyActive = this.isTapeStopped || this.isFrozen;
 
     if (!currentlyActive) {
-      // 1. BRAKE & FREEZE
+      // 1. TAPE BRAKE DIVE + RHYTHMIC STUTTER LOOP
       this.isTapeStopped = true;
       this.isFrozen = true;
+      this.freezeAnchorTime = Math.max(0, media.currentTime || 0);
+      if (media.paused) {
+        media.play().catch(() => {});
+      }
+      this.applyPitchPreservation(false); // Analog pitch dive on brake!
       if (onStateChange) onStateChange(true);
 
-      // Engage audio granular freeze loop
+      // Engage audio granular stutter resonator
       this.setFreeze(true, sliceDuration);
 
-      let current = media.playbackRate || nominalRate;
+      let currentRate = media.playbackRate || nominalRate;
+      let elapsedMs = 0;
+      let sinceLastJumpMs = 0;
+
       this.tapeInterval = setInterval(() => {
-        current *= 0.82;
-        if (current <= 0.06) {
-          clearInterval(this.tapeInterval);
-          this.tapeInterval = null;
-          media.playbackRate = 0.06;
+        elapsedMs += 30;
+        sinceLastJumpMs += 30;
+
+        // First ~280ms: Analog tape brake pitch dive down to 0.55x (stays >= 0.5x so Chromium never mutes audio!)
+        if (currentRate > 0.56) {
+          currentRate = Math.max(0.55, currentRate * 0.88);
+          media.playbackRate = currentRate;
         } else {
-          media.playbackRate = current;
+          // Slight warble on the frozen tape motor
+          media.playbackRate = 0.55 + Math.sin(elapsedMs * 0.025) * 0.04;
         }
-      }, 35);
+
+        // Rhythmic micro-slice seek loop (SP-404 / CDJ Beat-Repeat Stutter)
+        const loopWindowMs = Math.max(75, Math.min(380, this.currentStutterSpeed * 1000 * 1.35));
+        if (sinceLastJumpMs >= loopWindowMs) {
+          sinceLastJumpMs = 0;
+          try {
+            if (Number.isFinite(this.freezeAnchorTime)) {
+              media.currentTime = this.freezeAnchorTime;
+            }
+          } catch {}
+        }
+      }, 30);
 
       return true;
     } else {
-      // 2. RESUME: Disengage freeze loop & spin motor back up smoothly
+      // 2. RESUME: Disengage stutter loop & spin tape motor back up smoothly to nominal speed
       this.isTapeStopped = false;
       this.isFrozen = false;
       this.setFreeze(false);
@@ -611,17 +637,17 @@ export class AudioCircuitEngine {
         media.play().catch(() => {});
       }
 
-      let current = media.playbackRate || 0.06;
+      let currentRate = media.playbackRate || 0.55;
       this.tapeInterval = setInterval(() => {
-        current += (nominalRate - current) * 0.25;
-        if (Math.abs(nominalRate - current) < 0.02) {
+        currentRate += (nominalRate - currentRate) * 0.28;
+        if (Math.abs(nominalRate - currentRate) < 0.02) {
           clearInterval(this.tapeInterval);
           this.tapeInterval = null;
           media.playbackRate = nominalRate;
         } else {
-          media.playbackRate = current;
+          media.playbackRate = currentRate;
         }
-      }, 35);
+      }, 30);
 
       return false;
     }
@@ -663,6 +689,15 @@ export class AudioCircuitEngine {
       const safeSpeed = Math.max(0.4, Math.min(1.5, params.tapeSpeed || 1.0));
       if (Math.abs(this.connectedElement.playbackRate - safeSpeed) > 0.01) {
         this.connectedElement.playbackRate = safeSpeed;
+      }
+    }
+
+    // 1.5 Live Stutter Slice Speed when Tape Freeze is active
+    if (params.stutterSpeed) {
+      const safeSlice = Math.max(0.04, Math.min(0.40, params.stutterSpeed));
+      this.currentStutterSpeed = safeSlice;
+      if (this.isFrozen && this.stutterDelayNode) {
+        this.stutterDelayNode.delayTime.setTargetAtTime(safeSlice, t, 0.015);
       }
     }
 

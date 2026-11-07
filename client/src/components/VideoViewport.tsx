@@ -153,7 +153,7 @@ const CircuitScreen: React.FC<{
 
       const isVideoReady = Boolean(videoElement && videoElement.readyState >= 2);
 
-      if (!isFreezeActive && texture && isVideoReady) {
+      if (texture && isVideoReady) {
         texture.needsUpdate = true;
       }
 
@@ -161,7 +161,7 @@ const CircuitScreen: React.FC<{
         const mu = moshPipeline.material.uniforms;
         mu.tVideo.value = texture;
         mu.tPrevMosh.value = moshPipeline.read.texture;
-        mu.uDatamosh.value = moshAmt;
+        mu.uDatamosh.value = isFreezeActive ? Math.max(moshAmt, 0.38) : moshAmt;
         mu.uTime.value = elapsed;
         mu.uResolution.value.set(1280, 720);
 
@@ -173,7 +173,7 @@ const CircuitScreen: React.FC<{
         moshPipeline.read = moshPipeline.write;
         moshPipeline.write = temp;
 
-        u.tDiffuse.value = moshAmt > 0.001 ? moshPipeline.read.texture : texture;
+        u.tDiffuse.value = (moshAmt > 0.001 || isFreezeActive) ? moshPipeline.read.texture : texture;
       } else if (texture && !isVideoReady) {
         u.tDiffuse.value = moshPipeline.read.texture;
       }
@@ -181,19 +181,23 @@ const CircuitScreen: React.FC<{
       u.uTime.value = elapsed;
       u.uResolution.value.set(size.width, size.height);
 
-      // Core Glitch
-      u.uGlitchIntensity.value = Number.isFinite(p.glitchIntensity) ? p.glitchIntensity : 0;
-      u.uRgbShift.value = Number.isFinite(p.rgbShift) ? p.rgbShift : 0;
+      // Core Glitch (+ Live VCR Tape Freeze Stutter Jitter when Freeze Pad is active!)
+      const freezeGlitchBoost = isFreezeActive ? 0.32 + Math.abs(Math.sin(elapsed * 18.0)) * 0.22 : 0.0;
+      const freezeRgbBoost = isFreezeActive ? 0.18 + Math.abs(Math.cos(elapsed * 14.0)) * 0.12 : 0.0;
+      const freezeVhsBoost = isFreezeActive ? 0.55 : 0.0;
+
+      u.uGlitchIntensity.value = Math.min(1.0, (Number.isFinite(p.glitchIntensity) ? p.glitchIntensity : 0) + freezeGlitchBoost);
+      u.uRgbShift.value = Math.min(1.0, (Number.isFinite(p.rgbShift) ? p.rgbShift : 0) + freezeRgbBoost);
       u.uScanlines.value = Number.isFinite(p.scanlines) ? p.scanlines : 0;
       u.uColorBleed.value = Number.isFinite(p.colorBleed) ? p.colorBleed : 0;
       u.uFeedback.value = Number.isFinite(p.feedback) ? p.feedback : 0;
-      u.uNoise.value = Number.isFinite(p.noise) ? p.noise : 0;
+      u.uNoise.value = Math.min(1.0, (Number.isFinite(p.noise) ? p.noise : 0) + (isFreezeActive ? 0.15 : 0));
 
       // Vaporwave, VHS & CRT
       u.uVaporwaveTint.value = Number.isFinite(p.vaporwaveTint) ? p.vaporwaveTint : 0;
       u.uCrtCurvature.value = Number.isFinite(p.crtCurvature) ? p.crtCurvature : 0;
       u.uApertureGrille.value = Number.isFinite(p.apertureGrille) ? p.apertureGrille : 0;
-      u.uVhsHeadSwitching.value = Number.isFinite(p.vhsHeadSwitching) ? p.vhsHeadSwitching : 0;
+      u.uVhsHeadSwitching.value = Math.min(1.0, (Number.isFinite(p.vhsHeadSwitching) ? p.vhsHeadSwitching : 0) + freezeVhsBoost);
       u.uVHoldDrift.value = Number.isFinite(p.vHoldDrift) ? p.vHoldDrift : 0;
 
       // Video Bends, Datamosh & 3D Tunnel
