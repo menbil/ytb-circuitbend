@@ -235,5 +235,55 @@ export const PRESETS: Preset[] = [
       isMuted: false,
       pitchLock: true
     }
+  },
+  {
+    id: 'rutt-etra-3d',
+    name: 'Rutt-Etra 3D Matrix',
+    badge: '3D HOLO',
+    description: 'Synthétiseur vidéo 3D Rutt-Etra : extrusion topographique Z par luminosité, maillage fil de fer 3D, caméra orbitale et zoom sur les basses.',
+    video: {
+      glitchIntensity: 0.12,
+      rgbShift: 0.28,
+      scanlines: 0.30,
+      colorBleed: 0.35,
+      feedback: 0.25,
+      noise: 0.05,
+      vaporwaveTint: 0.65,
+      crtCurvature: 0.15,
+      apertureGrille: 0.30,
+      vhsHeadSwitching: 0.10,
+      vHoldDrift: 0.0,
+      meshDisplacement: 0.82,
+      chromaSmear: 0.35,
+      audioReact: 0.85,
+      luminance: 0.45,
+      datamosh: 0.0,
+      orbit3d: 0.65,
+      tunnel3d: 0.0,
+      wireframe3d: 1.0
+    },
+    audio: {
+      bitcrush: 0.12,
+      drive: 0.25,
+      filterCutoff: 3200,
+      filterResonance: 3.5,
+      filterType: 'lowpass',
+      tapeSpeed: 0.85,
+      wowRate: 0.9,
+      wowDepth: 0.28,
+      flutterRate: 6.5,
+      flutterDepth: 0.12,
+      delayTime: 0.22,
+      reverbWet: 0.55,
+      tapeTone: 0.60,
+      tapeHiss: 0.01,
+      tapeDropouts: 0.05,
+      stutterSpeed: 0.14,
+      ringModMix: 0.0,
+      ringModFreq: 180,
+      masterVolume: 0.85,
+      isMuted: false,
+      pitchLock: false
+    }
   }
 ];

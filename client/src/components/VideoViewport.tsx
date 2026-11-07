@@ -106,6 +106,20 @@ const CircuitScreen: React.FC<{
     };
   }, [moshPipeline]);
 
+  // Pre-allocated geometries: 4-vertex flat quad (0% cost default) vs 80x45 Rutt-Etra 3D relief grid
+  const geometries = useMemo(() => {
+    const flat = new THREE.PlaneGeometry(1, 1, 1, 1);
+    const ruttEtra = new THREE.PlaneGeometry(1, 1, 80, 45);
+    return { flat, ruttEtra };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      geometries.flat.dispose();
+      geometries.ruttEtra.dispose();
+    };
+  }, [geometries]);
+
   const shaderMaterial = useMemo(() => {
     const uniforms = THREE.UniformsUtils.clone(CircuitBendShader.uniforms);
     if (texture) {
@@ -133,6 +147,10 @@ const CircuitScreen: React.FC<{
       const u = shaderMaterial.uniforms;
       const p = paramsRef.current;
       const moshAmt = Number.isFinite(p.datamosh ?? 0) ? (p.datamosh ?? 0) : 0;
+      const meshAmt = Number.isFinite(p.meshDisplacement) ? p.meshDisplacement : 0;
+      const orbitAmt = Number.isFinite(p.orbit3d ?? 0) ? (p.orbit3d ?? 0) : 0;
+      const tunnelAmt = Number.isFinite(p.tunnel3d ?? 0) ? (p.tunnel3d ?? 0) : 0;
+      const isWireframe = (p.wireframe3d ?? 0) > 0.5;
 
       const isVideoReady = Boolean(videoElement && videoElement.readyState >= 2);
 
@@ -179,14 +197,42 @@ const CircuitScreen: React.FC<{
       u.uVhsHeadSwitching.value = Number.isFinite(p.vhsHeadSwitching) ? p.vhsHeadSwitching : 0;
       u.uVHoldDrift.value = Number.isFinite(p.vHoldDrift) ? p.vHoldDrift : 0;
 
-      // Video Bends & Datamosh
-      u.uMeshDisplacement.value = Number.isFinite(p.meshDisplacement) ? p.meshDisplacement : 0;
+      // Video Bends, Datamosh & 3D Tunnel
+      u.uMeshDisplacement.value = meshAmt;
       u.uChromaSmear.value = Number.isFinite(p.chromaSmear) ? p.chromaSmear : 0;
       u.uAudioReact.value = Number.isFinite(p.audioReact) ? p.audioReact : 0;
       const rawBass = audioEngine ? audioEngine.getBassEnergy() : (externalBassEnergy || 0.0);
-      u.uAudioBass.value = Number.isFinite(rawBass) ? rawBass : 0.0;
+      const safeBass = Number.isFinite(rawBass) ? rawBass : 0.0;
+      u.uAudioBass.value = safeBass;
       u.uLuminance.value = Number.isFinite(p.luminance) ? p.luminance : 0;
       u.uDatamosh.value = moshAmt;
+      u.uTunnel3d.value = tunnelAmt;
+
+      // Dynamic 3D Mesh Switching & Camera Orbit/Tilt (0% overhead when inactive)
+      if (meshRef.current) {
+        const useHighDensityGrid = meshAmt > 0.005 || isWireframe;
+        const targetGeo = useHighDensityGrid ? geometries.ruttEtra : geometries.flat;
+        if (meshRef.current.geometry !== targetGeo) {
+          meshRef.current.geometry = targetGeo;
+        }
+        if (shaderMaterial.wireframe !== isWireframe) {
+          shaderMaterial.wireframe = isWireframe;
+        }
+
+        if (orbitAmt > 0.005) {
+          meshRef.current.rotation.y = Math.sin(elapsed * 0.85) * 0.42 * orbitAmt;
+          meshRef.current.rotation.x = Math.cos(elapsed * 0.62) * 0.24 * orbitAmt - safeBass * 0.14 * orbitAmt;
+          meshRef.current.rotation.z = Math.sin(elapsed * 0.45) * 0.08 * orbitAmt;
+          meshRef.current.position.z = (Math.sin(elapsed * 1.1) * 0.45 + safeBass * 1.15) * orbitAmt;
+        } else if (
+          meshRef.current.rotation.x !== 0 ||
+          meshRef.current.rotation.y !== 0 ||
+          meshRef.current.position.z !== 0
+        ) {
+          meshRef.current.rotation.set(0, 0, 0);
+          meshRef.current.position.set(0, 0, 0);
+        }
+      }
 
       // Render main 3D CRT scene
       state.gl.render(state.scene, state.camera);
@@ -250,8 +296,7 @@ const CircuitScreen: React.FC<{
   }, 1);
 
   return (
-    <mesh ref={meshRef} scale={[planeWidth, planeHeight, 1]}>
-      <planeGeometry args={[1, 1]} />
+    <mesh ref={meshRef} geometry={geometries.flat} scale={[planeWidth, planeHeight, 1]}>
       <primitive object={shaderMaterial} attach="material" />
     </mesh>
   );

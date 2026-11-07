@@ -658,10 +658,28 @@ export const RackControls: React.FC<RackControlsProps> = ({
                   </div>
                 </div>
 
-                {/* Row 2: Glitch, Chromatic Aberration & Circuit Corruption */}
+                {/* Row 2: Glitch, Chromatic Aberration, 3D Rutt-Etra & Tunnel */}
                 <div className="flex items-center justify-between px-1">
-                  <span className="text-[9px] font-mono text-cyan-400 font-bold">2. GLITCH & CORRUPTION :</span>
-                  <div className="grid grid-cols-8 gap-1.5 flex-1 max-w-3xl justify-items-center">
+                  <div className="flex flex-col gap-1 pr-2">
+                    <span className="text-[9px] font-mono text-cyan-400 font-bold">2. GLITCH &amp; 3D :</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateVideo({
+                          wireframe3d: (videoParams.wireframe3d || 0) > 0.5 ? 0.0 : 1.0
+                        })
+                      }
+                      className={`px-1.5 py-0.5 rounded font-mono text-[8px] font-bold border transition-all ${
+                        (videoParams.wireframe3d || 0) > 0.5
+                          ? 'bg-cyan-500 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.8)]'
+                          : 'bg-neutral-900 text-cyan-300 border-cyan-800/80 hover:border-cyan-500'
+                      }`}
+                      title="Activer le maillage Fil de Fer 3D Rutt-Etra (0% coût GPU)"
+                    >
+                      {(videoParams.wireframe3d || 0) > 0.5 ? '🕸️ WIRE 3D ON' : '🕸️ WIRE 3D OFF'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-10 gap-1 flex-1 max-w-4xl justify-items-center">
                     <HardwareKnob
                       label="H-SYNC LOSS"
                       value={videoParams.glitchIntensity}
@@ -729,7 +747,7 @@ export const RackControls: React.FC<RackControlsProps> = ({
                       {...knobModProps('video.noise', effVid.noise)}
                     />
                     <HardwareKnob
-                      label="3D RELIEF"
+                      label="3D Z-EXTRUDE"
                       value={videoParams.meshDisplacement || 0.0}
                       min={0.0}
                       max={1.0}
@@ -738,6 +756,28 @@ export const RackControls: React.FC<RackControlsProps> = ({
                       color="crimson"
                       onChange={(v) => onUpdateVideo({ meshDisplacement: v })}
                       {...knobModProps('video.meshDisplacement', effVid.meshDisplacement || 0)}
+                    />
+                    <HardwareKnob
+                      label="3D ORBIT/TILT"
+                      value={videoParams.orbit3d || 0.0}
+                      min={0.0}
+                      max={1.0}
+                      step={0.01}
+                      defaultValue={0.0}
+                      color="electric"
+                      onChange={(v) => onUpdateVideo({ orbit3d: v })}
+                      {...knobModProps('video.orbit3d', effVid.orbit3d || 0)}
+                    />
+                    <HardwareKnob
+                      label="3D TUNNEL"
+                      value={videoParams.tunnel3d || 0.0}
+                      min={0.0}
+                      max={1.0}
+                      step={0.01}
+                      defaultValue={0.0}
+                      color="phosphor"
+                      onChange={(v) => onUpdateVideo({ tunnel3d: v })}
+                      {...knobModProps('video.tunnel3d', effVid.tunnel3d || 0)}
                     />
                     <HardwareKnob
                       label="SIDECHAIN KICK"

@@ -25,11 +25,14 @@ export interface VideoBendingParams {
   vHoldDrift: number;        // 0.0 -> 1.0 (vertical sync roll)
 
   // 3D Mesh & Optical Bleed
-  meshDisplacement: number;  // 0.0 -> 1.0 (Three.js 3D plane vertex topography)
+  meshDisplacement: number;  // 0.0 -> 1.0 (Three.js 3D Rutt-Etra Z-Extrusion topography)
   chromaSmear: number;       // 0.0 -> 1.0 (beam bleed & composite RCA horizontal smear)
   audioReact: number;        // 0.0 -> 1.0 (sidechain audio bass energy to glitch & pulse)
   luminance: number;         // 0.0 -> 1.0 (luma overdrive, solarization & contrast bending)
   datamosh?: number;         // 0.0 -> 1.0 (macro-block datamosh & luma pixel sort melt)
+  orbit3d?: number;          // 0.0 -> 1.0 (3D camera tilt, floating orbit & bass kick Z-zoom)
+  tunnel3d?: number;         // 0.0 -> 1.0 (1-pass shader infinite 3D mirror tunnel)
+  wireframe3d?: number;      // 0.0 or 1.0 (Hardware 3D wireframe Rutt-Etra toggle)
 }
 
 export interface AudioBendingParams {

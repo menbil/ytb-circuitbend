@@ -130,15 +130,32 @@ export const CircuitBendShader = {
     uAudioReact: { value: 0.0 },
     uAudioBass: { value: 0.0 },
     uLuminance: { value: 0.0 },
-    uDatamosh: { value: 0.0 }
+    uDatamosh: { value: 0.0 },
+    uTunnel3d: { value: 0.0 }
   },
 
   vertexShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uMeshDisplacement;
+    uniform float uAudioBass;
+    uniform float uTime;
+
     varying vec2 vUv;
 
     void main() {
       vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      vec3 pos = position;
+
+      // Zero-cost when uMeshDisplacement is 0; true Rutt-Etra 3D Z-Extrusion when > 0
+      if (uMeshDisplacement > 0.005) {
+        vec4 texColor = texture2D(tDiffuse, uv);
+        float luma = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+        float scanWave = sin(uv.y * 36.0 + uTime * 3.5) * 0.012;
+        float zExtrude = ((luma - 0.32) * 0.26 + scanWave) * uMeshDisplacement * (1.0 + uAudioBass * 0.55);
+        pos.z += zExtrude;
+      }
+
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
     }
   `,
 
@@ -169,6 +186,7 @@ export const CircuitBendShader = {
     uniform float uLuminance;
     uniform float uMeshDisplacement;
     uniform float uDatamosh;
+    uniform float uTunnel3d;
 
     varying vec2 vUv;
 
@@ -257,6 +275,40 @@ export const CircuitBendShader = {
         vec4 ghost2 = texture2D(tDiffuse, clamp(uv + vec2(0.025, -0.012) * uFeedback, 0.0, 1.0));
         vec4 ghostBlend = (ghost1 * 0.6 + ghost2 * 0.4);
         baseColor = mix(baseColor, baseColor + ghostBlend * 0.75, uFeedback);
+      }
+
+      // 6.2 1-PASS INFINITE 3D MIRROR TUNNEL / Z-CORRIDOR (uTunnel3d) — Zero cost when 0
+      if (uTunnel3d > 0.005) {
+        vec2 centered = uv - 0.5;
+        float speed = uTime * (0.45 + uTunnel3d * 0.8);
+        // 3 concentric Z-planes advancing toward the camera
+        float z1 = fract(speed);
+        float z2 = fract(speed + 0.333);
+        float z3 = fract(speed + 0.666);
+
+        float scale1 = mix(2.6, 0.85, z1);
+        float scale2 = mix(2.6, 0.85, z2);
+        float scale3 = mix(2.6, 0.85, z3);
+
+        vec2 uv1 = clamp(centered * scale1 + 0.5, 0.0, 1.0);
+        vec2 uv2 = clamp(centered * scale2 + 0.5, 0.0, 1.0);
+        vec2 uv3 = clamp(centered * scale3 + 0.5, 0.0, 1.0);
+
+        // Box frame masks so inner planes look like 3D floating CRT screens in a corridor
+        float b1 = step(max(abs(centered.x * scale1), abs(centered.y * scale1)), 0.49) * sin(z1 * 3.14159);
+        float b2 = step(max(abs(centered.x * scale2), abs(centered.y * scale2)), 0.49) * sin(z2 * 3.14159);
+        float b3 = step(max(abs(centered.x * scale3), abs(centered.y * scale3)), 0.49) * sin(z3 * 3.14159);
+
+        vec3 tCol1 = texture2D(tDiffuse, uv1).rgb;
+        vec3 tCol2 = texture2D(tDiffuse, uv2).rgb;
+        vec3 tCol3 = texture2D(tDiffuse, uv3).rgb;
+
+        vec3 tunnelMix = (tCol1 * b1 + tCol2 * b2 + tCol3 * b3) / max(0.001, b1 + b2 + b3);
+        // Subtle neon depth rim around each 3D tunnel frame
+        float edge1 = smoothstep(0.46, 0.49, max(abs(centered.x * scale1), abs(centered.y * scale1))) * b1;
+        tunnelMix += vec3(0.0, 0.85, 1.0) * edge1 * 0.55;
+
+        baseColor.rgb = mix(baseColor.rgb, tunnelMix, uTunnel3d * 0.85);
       }
 
       // 6.5 HORIZONTAL CHROMA SMEAR & BEAM BLEED (uChromaSmear)
