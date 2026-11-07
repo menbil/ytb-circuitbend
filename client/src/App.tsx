@@ -2182,7 +2182,7 @@ export const App: React.FC = () => {
     };
 
     // 3. PROCEDURAL LFO & SERUM MODULATION MATRIX
-    const shapes: LfoShape[] = ['sine', 'triangle', 'saw', 'sawDown', 'square', 'random', 'drift'];
+    const shapes: Exclude<LfoShape, 'custom'>[] = ['sine', 'triangle', 'saw', 'sawDown', 'square', 'random', 'drift'];
     const lfo1Shape = pick(shapes);
     const lfo2Shape = pick(shapes);
     const rate1 = Number(rnd(0.2, 2.8).toFixed(2));
