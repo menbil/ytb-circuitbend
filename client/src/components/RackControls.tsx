@@ -660,25 +660,7 @@ export const RackControls: React.FC<RackControlsProps> = ({
 
                 {/* Row 2: Glitch, Chromatic Aberration, 3D Rutt-Etra & Tunnel */}
                 <div className="flex items-center justify-between px-1">
-                  <div className="flex flex-col gap-1 pr-2">
-                    <span className="text-[9px] font-mono text-cyan-400 font-bold">2. GLITCH &amp; 3D :</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateVideo({
-                          wireframe3d: (videoParams.wireframe3d || 0) > 0.5 ? 0.0 : 1.0
-                        })
-                      }
-                      className={`px-1.5 py-0.5 rounded font-mono text-[8px] font-bold border transition-all ${
-                        (videoParams.wireframe3d || 0) > 0.5
-                          ? 'bg-cyan-500 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.8)]'
-                          : 'bg-neutral-900 text-cyan-300 border-cyan-800/80 hover:border-cyan-500'
-                      }`}
-                      title="Activer le maillage Fil de Fer 3D Rutt-Etra (0% coût GPU)"
-                    >
-                      {(videoParams.wireframe3d || 0) > 0.5 ? '🕸️ WIRE 3D ON' : '🕸️ WIRE 3D OFF'}
-                    </button>
-                  </div>
+                  <span className="text-[9px] font-mono text-cyan-400 font-bold">2. GLITCH &amp; 3D :</span>
                   <div className="grid grid-cols-10 gap-1 flex-1 max-w-4xl justify-items-center">
                     <HardwareKnob
                       label="H-SYNC LOSS"

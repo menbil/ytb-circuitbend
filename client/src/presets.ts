@@ -259,8 +259,7 @@ export const PRESETS: Preset[] = [
       luminance: 0.45,
       datamosh: 0.0,
       orbit3d: 0.65,
-      tunnel3d: 0.0,
-      wireframe3d: 1.0
+      tunnel3d: 0.35
     },
     audio: {
       bitcrush: 0.12,

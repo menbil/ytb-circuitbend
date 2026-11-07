@@ -32,7 +32,6 @@ export interface VideoBendingParams {
   datamosh?: number;         // 0.0 -> 1.0 (macro-block datamosh & luma pixel sort melt)
   orbit3d?: number;          // 0.0 -> 1.0 (3D camera tilt, floating orbit & bass kick Z-zoom)
   tunnel3d?: number;         // 0.0 -> 1.0 (1-pass shader infinite 3D mirror tunnel)
-  wireframe3d?: number;      // 0.0 or 1.0 (Hardware 3D wireframe Rutt-Etra toggle)
 }
 
 export interface AudioBendingParams {

@@ -343,8 +343,7 @@ export const App: React.FC = () => {
       luminance: lerp(pA.video.luminance, pB.video.luminance),
       datamosh: lerp(pA.video.datamosh ?? 0, pB.video.datamosh ?? 0),
       orbit3d: lerp(pA.video.orbit3d ?? 0, pB.video.orbit3d ?? 0),
-      tunnel3d: lerp(pA.video.tunnel3d ?? 0, pB.video.tunnel3d ?? 0),
-      wireframe3d: t < 0.5 ? (pA.video.wireframe3d ?? 0) : (pB.video.wireframe3d ?? 0)
+      tunnel3d: lerp(pA.video.tunnel3d ?? 0, pB.video.tunnel3d ?? 0)
     };
 
     const morphedAudio: AudioBendingParams = {

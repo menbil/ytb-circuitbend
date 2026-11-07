@@ -150,7 +150,6 @@ const CircuitScreen: React.FC<{
       const meshAmt = Number.isFinite(p.meshDisplacement) ? p.meshDisplacement : 0;
       const orbitAmt = Number.isFinite(p.orbit3d ?? 0) ? (p.orbit3d ?? 0) : 0;
       const tunnelAmt = Number.isFinite(p.tunnel3d ?? 0) ? (p.tunnel3d ?? 0) : 0;
-      const isWireframe = (p.wireframe3d ?? 0) > 0.5;
 
       const isVideoReady = Boolean(videoElement && videoElement.readyState >= 2);
 
@@ -210,13 +209,9 @@ const CircuitScreen: React.FC<{
 
       // Dynamic 3D Mesh Switching & Camera Orbit/Tilt (0% overhead when inactive)
       if (meshRef.current) {
-        const useHighDensityGrid = meshAmt > 0.005 || isWireframe;
-        const targetGeo = useHighDensityGrid ? geometries.ruttEtra : geometries.flat;
+        const targetGeo = meshAmt > 0.005 ? geometries.ruttEtra : geometries.flat;
         if (meshRef.current.geometry !== targetGeo) {
           meshRef.current.geometry = targetGeo;
-        }
-        if (shaderMaterial.wireframe !== isWireframe) {
-          shaderMaterial.wireframe = isWireframe;
         }
 
         if (orbitAmt > 0.005) {
