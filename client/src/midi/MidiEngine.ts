@@ -1,7 +1,6 @@
 import {
   MidiTarget,
-  MidiActivityEvent,
-  MIDI_TARGET_CATALOG
+  MidiActivityEvent
 } from './midiTypes.js';
 
 export interface MidiProfile {
@@ -11,44 +10,131 @@ export interface MidiProfile {
   noteMap: Record<number, MidiTarget>;
 }
 
-// 1. Novation Launch Control Factory Mapping (16 Knobs + 8 Pads + 4 Arrow Buttons)
+export interface LaunchControlBank {
+  id: number;
+  name: string;
+  shortName: string;
+  description: string;
+  knobCcMap: Record<number, MidiTarget>;
+}
+
+export interface MidiLedState {
+  isPlaying: boolean;
+  isTapeFreeze: boolean;
+  isRecording: boolean;
+  isRecordingWav: boolean;
+  lfoEnabled: boolean;
+  showVcrOsd: boolean;
+  activePresetId: string;
+  punchInFx: 'datamosh' | 'glitch' | 'crush' | null;
+  activeBank: number;
+}
+
+// Novation Launch Control (Original 16-Knob, non-XL) — 3 Knob Banks (3 x 16 = 48 Knobs covering 100% of the studio!)
+export const LAUNCH_CONTROL_BANKS: LaunchControlBank[] = [
+  {
+    id: 0,
+    name: 'BANQUE 1/3 — 3D, GLITCH & AUDIO PRINCIPAL',
+    shortName: 'BANQUE 1 (3D & MAIN)',
+    description: 'Rangée 1 : Glitch, RGB, Datamosh, 3D Z-Extrude, 3D Orbit, 3D Tunnel, Feedback, Vapor • Rangée 2 : Speed, Filter, Reverb, Wow, Drive, Crush, Morph',
+    knobCcMap: {
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Main Video & 3D Shaders
+      21: 'video.glitchIntensity',  // K1: H-Sync Loss / Glitch
+      22: 'video.rgbShift',         // K2: RGB Channel Shift
+      23: 'video.datamosh',         // K3: Temporal Datamosh Melt
+      24: 'video.meshDisplacement', // K4: 3D Z-Extrude (Rutt-Etra Relief)
+      25: 'video.orbit3d',          // K5: 3D Orbit / Tilt Camera
+      26: 'video.tunnel3d',         // K6: 3D Infinite Mirror Tunnel
+      27: 'video.feedback',         // K7: Capacitive Feedback Trails
+      28: 'video.vaporwaveTint',    // K8: Vaporwave Pastel Tint
+
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Core Audio DSP & Morph
+      41: 'audio.tapeSpeed',        // K9: Tape Playback Speed (0.5x - 1.5x)
+      42: 'audio.filterCutoff',     // K10: Filter Cutoff (80Hz - 18kHz)
+      43: 'audio.filterResonance',  // K11: Filter Resonance (Q)
+      44: 'audio.reverbWet',        // K12: Abandoned Mall Reverb
+      45: 'audio.wowDepth',         // K13: Wow Detune Depth
+      46: 'audio.drive',            // K14: Analog Tape Saturation Drive
+      47: 'audio.bitcrush',         // K15: 8-Bit Lo-Fi Crush
+      48: 'mod.morphAB'             // K16: Crossfader Morphing (Patch A <-> B)
+    }
+  },
+  {
+    id: 1,
+    name: 'BANQUE 2/3 — CRT/VHS & TAPE DECK / RING-MOD',
+    shortName: 'BANQUE 2 (CRT & TAPE)',
+    description: 'Rangée 1 : Scanlines, CRT Curve, Phosphor, Color Bleed, Chroma Smear, VHS Head, V-Hold, Solarize • Rangée 2 : Flutter, Tape Tone/Hiss/Dropouts, Stutter, RingMod, Delay',
+    knobCcMap: {
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): CRT Tube & VHS Tape Artifacts
+      21: 'video.scanlines',        // K1: CRT Scanlines
+      22: 'video.crtCurvature',     // K2: CRT Tube Curvature
+      23: 'video.apertureGrille',   // K3: Phosphor Mask (Aperture Grille)
+      24: 'video.colorBleed',       // K4: VHS Color Bleed
+      25: 'video.chromaSmear',      // K5: Chroma Beam Smear
+      26: 'video.vhsHeadSwitching', // K6: VHS Head Switching Noise
+      27: 'video.vHoldDrift',       // K7: V-Hold Vertical Sync Drift
+      28: 'video.luminance',        // K8: Luminance & Solarization
+
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Deep Tape Deck & Ring Modulator
+      41: 'audio.flutterDepth',     // K9: Flutter Vibration Depth
+      42: 'audio.tapeTone',         // K10: Ferric Tape Head Bump EQ
+      43: 'audio.tapeHiss',         // K11: Analog Tape Hiss Floor
+      44: 'audio.tapeDropouts',     // K12: Magnetic Tape Micro-Dropouts
+      45: 'audio.stutterSpeed',     // K13: Freeze Granular Slice Speed
+      46: 'audio.ringModMix',       // K14: Ring Modulator Wet Mix
+      47: 'audio.ringModFreq',      // K15: Ring Modulator Carrier Freq
+      48: 'audio.delayTime'         // K16: Tape Echo / Delay Time
+    }
+  },
+  {
+    id: 2,
+    name: 'BANQUE 3/3 — AUDIO-REACT, SERUM LFOs & CHAOS XY',
+    shortName: 'BANQUE 3 (LFO & XY)',
+    description: 'Rangée 1 : RF Noise, Audio-React, Chaos Pad X & Y, LFO 1 & 2 Speed, LFO Depth & Phase • Rangée 2 : Wow/Flutter Rate, Master Vol & Rappels 3D',
+    knobCcMap: {
+      // Top Row (Knobs 1 to 8 — CC 21 to 28): Audio-React, RF Noise & Serum LFOs / XY Pad
+      21: 'video.noise',            // K1: Analog RF Static Noise
+      22: 'video.audioReact',       // K2: Sidechain Kick Audio-Reactivity
+      23: 'mod.macroX',             // K3: Vector Chaos Pad X
+      24: 'mod.macroY',             // K4: Vector Chaos Pad Y
+      25: 'mod.lfo1Rate',           // K5: LFO 1 Speed (0.1Hz - 12Hz)
+      26: 'mod.lfo2Rate',           // K6: LFO 2 Speed (0.1Hz - 12Hz)
+      27: 'mod.lfoDepth',           // K7: LFO Global Depth
+      28: 'mod.phaseSpread',        // K8: LFO Multi-Target Phase Spread
+
+      // Bottom Row (Knobs 9 to 16 — CC 41 to 48): Oscillator Rates, Master Vol & Quick 3D Access
+      41: 'audio.wowRate',          // K9: Wow Oscillator Rate
+      42: 'audio.flutterRate',      // K10: Flutter Oscillator Rate
+      43: 'audio.masterVolume',     // K11: Master Output Volume
+      44: 'video.meshDisplacement', // K12: Quick 3D Z-Extrude
+      45: 'video.orbit3d',          // K13: Quick 3D Orbit/Tilt
+      46: 'video.tunnel3d',         // K14: Quick 3D Tunnel
+      47: 'video.datamosh',         // K15: Quick Datamosh Melt
+      48: 'mod.morphAB'             // K16: Quick Crossfader Morph A <-> B
+    }
+  }
+];
+
+// 1. Novation Launch Control Factory Mapping (16 Knobs x 3 Banks + 8 LED Pads + 4 Arrow Buttons)
 export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
   id: 'launch-control',
   name: 'Novation Launch Control',
   ccMap: {
-    // Top Row (Knobs 1 to 8): Factory CC 21 to 28 -> VIDEO & DATAMOSH
-    21: 'video.glitchIntensity', // Knob 1: H-Sync Loss / Glitch
-    22: 'video.rgbShift',        // Knob 2: RGB Channel Shift
-    23: 'video.datamosh',        // Knob 3: Temporal Datamosh Melt
-    24: 'video.feedback',        // Knob 4: Capacitive Feedback Trails
-    25: 'video.colorBleed',      // Knob 5: VHS Color Bleed
-    26: 'video.vaporwaveTint',   // Knob 6: Vaporwave Tint
-    27: 'video.scanlines',       // Knob 7: CRT Scanlines
-    28: 'video.crtCurvature',    // Knob 8: CRT Tube Curvature
-
-    // Bottom Row (Knobs 9 to 16): Factory CC 41 to 48 -> AUDIO & MORPH A/B
-    41: 'audio.drive',           // Knob 9: Tape Saturation Drive
-    42: 'audio.bitcrush',        // Knob 10: 8-Bit Lo-Fi Crush
-    43: 'audio.filterCutoff',    // Knob 11: Filter Cutoff (80Hz - 18kHz)
-    44: 'audio.filterResonance', // Knob 12: Filter Resonance (Q)
-    45: 'audio.tapeSpeed',       // Knob 13: Tape Speed & Pitch (0.5x - 1.1x)
-    46: 'audio.wowDepth',        // Knob 14: Wow & Flutter Tape Detune
-    47: 'audio.reverbWet',       // Knob 15: Abandoned Mall Reverb
-    48: 'mod.morphAB',           // Knob 16: Crossfader Morphing (Patch A <-> B)
+    ...LAUNCH_CONTROL_BANKS[0].knobCcMap,
 
     // CC Mode for Pads (Novation Launch Control CC 73 to 80)
-    73: 'action.playToggle',   // Pad 1: Play / Pause
-    74: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
-    75: 'action.randomize',    // Pad 3: Randomize / Glitch Macro
-    76: 'action.resetClean',   // Pad 4: Reset Clean / Bypass All FX
-    77: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot
-    78: 'action.recordToggle', // Pad 6: Video Session Record
-    79: 'action.preset1',      // Pad 7: Preset Abandoned Mall
-    80: 'action.preset2',      // Pad 8: Preset Damaged VHS Tape
+    73: 'action.playToggle',   // Pad 1: Play / Pause (LED Vert)
+    74: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze (LED Orange)
+    75: 'action.randomize',    // Pad 3: Randomize Procedural Patch (LED Jaune)
+    76: 'action.resetClean',   // Pad 4: Reset Clean / Bypass All FX (LED Vert)
+    77: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot (Flash LED)
+    78: 'action.recordToggle', // Pad 6: Video Session Record MP4 (LED Rouge Vif !)
+    79: 'action.lfoToggle',    // Pad 7: Activer / Désactiver Moteur LFO (LED Ambre)
+    80: 'action.preset5',      // Pad 8: Preset Rutt-Etra 3D Relief (LED Ambre)
 
     // 4 Directional Arrow Buttons on the right of Launch Control (CC 114 to 117)
-    114: 'action.tapTempo',    // Flèche Haut (▲): Tap Tempo BPM Sync
-    115: 'action.lfoToggle',   // Flèche Bas (▼): Activer / Désactiver Moteur LFO
+    114: 'action.bankPrev',    // Flèche Haut (▲): Banque de Potards Précédente (1 <-> 2 <-> 3)
+    115: 'action.bankNext',    // Flèche Bas (▼): Banque de Potards Suivante (1 <-> 2 <-> 3)
     116: 'action.prevTrack',   // Flèche Gauche (◄): Vidéo Précédente
     117: 'action.nextTrack',   // Flèche Droite (►): Vidéo Suivante
     118: 'action.vcrOsdToggle',
@@ -60,12 +146,12 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     // Factory Template 1: Pads 1-4 (Notes 9..12) & Pads 5-8 (Notes 25..28)
     9: 'action.playToggle',    // Pad 1: Play / Pause
     10: 'action.tapeFreeze',   // Pad 2: Tape Stop & Buffer Freeze
-    11: 'action.randomize',    // Pad 3: Randomize Macro
+    11: 'action.randomize',    // Pad 3: Randomize Procedural
     12: 'action.resetClean',   // Pad 4: Reset Clean / Bypass All FX
     25: 'action.snapshot',     // Pad 5: Polaroid Photo Snapshot
-    26: 'action.recordToggle', // Pad 6: Video Session Record
-    27: 'action.preset1',      // Pad 7: Preset Abandoned Mall
-    28: 'action.preset2',      // Pad 8: Preset Broken VHS
+    26: 'action.recordToggle', // Pad 6: Video Session Record (REC MP4)
+    27: 'action.lfoToggle',    // Pad 7: LFO Engine ON/OFF
+    28: 'action.preset5',      // Pad 8: Preset Rutt-Etra 3D
 
     // Factory Template 2: Pads 1-4 (Notes 13..16) & Pads 5-8 (Notes 29..32)
     13: 'action.playToggle',
@@ -74,8 +160,8 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     16: 'action.resetClean',
     29: 'action.snapshot',
     30: 'action.recordToggle',
-    31: 'action.preset1',
-    32: 'action.preset2',
+    31: 'action.lfoToggle',
+    32: 'action.preset5',
 
     // Factory Template 3: Pads 1-4 (Notes 17..20) & Pads 5-7 (Notes 33..35)
     17: 'action.playToggle',
@@ -84,7 +170,7 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     20: 'action.resetClean',
     33: 'action.snapshot',
     34: 'action.recordToggle',
-    35: 'action.preset1',
+    35: 'action.lfoToggle',
 
     // Factory Template 4: Pads 1-4 (Notes 21..24)
     21: 'action.playToggle',
@@ -98,9 +184,9 @@ export const LAUNCH_CONTROL_PROFILE: MidiProfile = {
     38: 'action.randomize',    // Pad 3
     39: 'action.resetClean',   // Pad 4
     40: 'action.snapshot',     // Pad 5
-    41: 'action.recordToggle', // Pad 6
-    42: 'action.preset1',      // Pad 7
-    43: 'action.preset2',      // Pad 8
+    41: 'action.recordToggle', // Pad 6 (REC MP4)
+    42: 'action.lfoToggle',    // Pad 7 (LFO ON/OFF)
+    43: 'action.preset5',      // Pad 8 (Preset Rutt-Etra 3D)
 
     // Generic 0 & 1
     0: 'action.playToggle',
@@ -197,7 +283,19 @@ export const GENERIC_PROFILE: MidiProfile = {
   }
 };
 
-const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v8';
+const STORAGE_KEY = 'ytb_circuitbend_midi_bindings_v9';
+
+// Novation Launch Control Bi-Color LED Velocities (Red/Green/Amber)
+export const LC_COLOR = {
+  OFF: 12,         // 0x0C (Éteint)
+  RED_DIM: 13,     // 0x0D (Rouge sombre / veille REC)
+  RED_FULL: 15,    // 0x0F (Rouge vif : REC actif / Punch-In)
+  GREEN_DIM: 28,   // 0x1C (Vert sombre)
+  GREEN_FULL: 60,  // 0x3C (Vert vif : PLAY / CLEAN / LFO actif)
+  AMBER_DIM: 29,   // 0x1D (Ambre doux : veille)
+  YELLOW_FULL: 62, // 0x3E (Jaune vif : RANDOM / SNAPSHOT)
+  AMBER_FULL: 63   // 0x3F (Orange/Ambre vif : FREEZE / PRESET actif)
+} as const;
 
 export type MidiDispatchFn = (target: MidiTarget, normalizedValue: number, isTrigger: boolean) => void;
 
@@ -208,11 +306,29 @@ export class MidiEngine {
   private lastError: string | null = null;
   private customCcMap: Record<number, MidiTarget> = {};
   private customNoteMap: Record<number, MidiTarget> = {};
+  private customBankKnobMaps: Array<Record<number, MidiTarget>> = [{}, {}, {}];
   private activeProfileId: string = 'auto';
+  private activeBank: number = 0; // 0 = Bank 1, 1 = Bank 2, 2 = Bank 3
+  private lastActiveChannel: number = 0;
+  private sysexEnabled: boolean = false;
+  private lastLedState: MidiLedState = {
+    isPlaying: false,
+    isTapeFreeze: false,
+    isRecording: false,
+    isRecordingWav: false,
+    lfoEnabled: true,
+    showVcrOsd: true,
+    activePresetId: 'clean',
+    punchInFx: null,
+    activeBank: 0
+  };
+  private flashPadIndex: number | null = null;
+  private flashPadTimer: any = null;
 
   private dispatchFn: MidiDispatchFn | null = null;
   private activityListeners: Array<(event: MidiActivityEvent) => void> = [];
   private stateChangeListeners: Array<(connected: boolean, deviceName: string) => void> = [];
+  private bankChangeListeners: Array<(bankIndex: number, bank: LaunchControlBank) => void> = [];
 
   // MIDI Learn state
   private learningTarget: MidiTarget | null = null;
@@ -249,14 +365,14 @@ export class MidiEngine {
 
     try {
       this.lastError = null;
-      let access = await (navigator as any).requestMIDIAccess({ sysex: false });
-      // If 0 inputs returned with sysex:false, try sysex:true to force permission prompt / Novation SysEx port enumeration
-      if (!access.inputs || access.inputs.size === 0) {
-        try {
-          access = await (navigator as any).requestMIDIAccess({ sysex: true });
-        } catch {
-          // Keep non-sysex access if sysex:true was declined
-        }
+      let access: any = null;
+      // Request sysex:true first so Novation Launch Control LEDs can be driven via both standard MIDI & SysEx
+      try {
+        access = await (navigator as any).requestMIDIAccess({ sysex: true });
+        this.sysexEnabled = true;
+      } catch {
+        access = await (navigator as any).requestMIDIAccess({ sysex: false });
+        this.sysexEnabled = false;
       }
       this.midiAccess = access;
       this.setupInputs();
@@ -265,6 +381,8 @@ export class MidiEngine {
       };
       if (!this.isConnected) {
         this.lastError = 'Aucun port MIDI détecté. Sur Windows, fermez tout autre navigateur/onglet local (localhost) ou logiciel utilisant déjà le Launch Control.';
+      } else {
+        this.syncHardwareLeds();
       }
       return this.isConnected;
     } catch (err: any) {
@@ -287,6 +405,34 @@ export class MidiEngine {
     this.stateChangeListeners.push(cb);
   }
 
+  public onBankChange(cb: (bankIndex: number, bank: LaunchControlBank) => void) {
+    this.bankChangeListeners.push(cb);
+  }
+
+  public getActiveBank(): number {
+    return this.activeBank;
+  }
+
+  public getActiveBankInfo(): LaunchControlBank {
+    return LAUNCH_CONTROL_BANKS[this.activeBank] || LAUNCH_CONTROL_BANKS[0];
+  }
+
+  public setActiveBank(bankIndex: number, notify = true): LaunchControlBank {
+    const total = LAUNCH_CONTROL_BANKS.length;
+    this.activeBank = ((bankIndex % total) + total) % total;
+    this.lastLedState.activeBank = this.activeBank;
+    const bank = this.getActiveBankInfo();
+    this.syncHardwareLeds();
+    if (notify) {
+      this.bankChangeListeners.forEach((cb) => cb(this.activeBank, bank));
+    }
+    return bank;
+  }
+
+  public stepBank(delta: number): LaunchControlBank {
+    return this.setActiveBank(this.activeBank + delta, true);
+  }
+
   public getIsConnected(): boolean {
     return this.isConnected;
   }
@@ -303,18 +449,29 @@ export class MidiEngine {
     return this.learningTarget;
   }
 
-  public setBinding(type: 'cc' | 'note', number: number, target: MidiTarget) {
+  public setBinding(type: 'cc' | 'note', number: number, target: MidiTarget, bankIndex?: number) {
     if (type === 'cc') {
-      this.customCcMap[number] = target;
+      const isLaunchControlKnob = (number >= 21 && number <= 28) || (number >= 41 && number <= 48);
+      if (isLaunchControlKnob) {
+        const b = bankIndex !== undefined ? bankIndex : this.activeBank;
+        if (!this.customBankKnobMaps[b]) this.customBankKnobMaps[b] = {};
+        this.customBankKnobMaps[b][number] = target;
+      } else {
+        this.customCcMap[number] = target;
+      }
     } else {
       this.customNoteMap[number] = target;
     }
     this.saveCustomBindings();
+    this.syncHardwareLeds();
   }
 
   public removeBinding(type: 'cc' | 'note', number: number) {
     if (type === 'cc') {
       delete this.customCcMap[number];
+      if (this.customBankKnobMaps[this.activeBank]) {
+        delete this.customBankKnobMaps[this.activeBank][number];
+      }
     } else {
       delete this.customNoteMap[number];
     }
@@ -329,14 +486,170 @@ export class MidiEngine {
 
     this.customCcMap = { ...prof.ccMap };
     this.customNoteMap = { ...prof.noteMap };
+    this.customBankKnobMaps = [
+      { ...LAUNCH_CONTROL_BANKS[0].knobCcMap },
+      { ...LAUNCH_CONTROL_BANKS[1].knobCcMap },
+      { ...LAUNCH_CONTROL_BANKS[2].knobCcMap }
+    ];
     this.saveCustomBindings();
+    this.syncHardwareLeds();
   }
 
-  public getAllBindings(): { cc: Record<number, MidiTarget>; notes: Record<number, MidiTarget> } {
+  public getAllBindings(bankIndex?: number): { cc: Record<number, MidiTarget>; notes: Record<number, MidiTarget> } {
     return {
-      cc: { ...this.getMergedCcMap() },
+      cc: { ...this.getMergedCcMap(bankIndex) },
       notes: { ...this.getMergedNoteMap() }
     };
+  }
+
+  /**
+   * Computes the Novation Launch Control LED color byte for a given MidiTarget & current app state
+   */
+  private getTargetLedColor(target: MidiTarget | undefined, state: MidiLedState, padIdx: number): number {
+    if (this.flashPadIndex === padIdx) {
+      return LC_COLOR.YELLOW_FULL;
+    }
+    if (!target) return LC_COLOR.OFF;
+
+    switch (target) {
+      case 'action.recordToggle':
+        // Bright Red when recording video MP4, Dim Red standby so you always spot the REC pad!
+        return state.isRecording ? LC_COLOR.RED_FULL : LC_COLOR.RED_DIM;
+      case 'action.recordWavToggle':
+        return state.isRecordingWav ? LC_COLOR.RED_FULL : LC_COLOR.RED_DIM;
+      case 'action.playToggle':
+        // Bright Green when playing, Dim Amber when paused
+        return state.isPlaying ? LC_COLOR.GREEN_FULL : LC_COLOR.AMBER_DIM;
+      case 'action.tapeFreeze':
+        // Bright Orange/Amber when Tape Freeze is active, Off when normal
+        return state.isTapeFreeze ? LC_COLOR.AMBER_FULL : LC_COLOR.OFF;
+      case 'action.randomize':
+        // Bright Yellow when on a Random patch, Off/Dim otherwise
+        return state.activePresetId === 'custom-random' ? LC_COLOR.YELLOW_FULL : LC_COLOR.OFF;
+      case 'action.resetClean':
+      case 'action.preset0':
+        // Bright Green when Clean Bypass is active
+        return state.activePresetId === 'clean' ? LC_COLOR.GREEN_FULL : LC_COLOR.OFF;
+      case 'action.lfoToggle':
+        // Bright Green when LFO engine is running
+        return state.lfoEnabled ? LC_COLOR.GREEN_FULL : LC_COLOR.OFF;
+      case 'action.vcrOsdToggle':
+        return state.showVcrOsd ? LC_COLOR.GREEN_FULL : LC_COLOR.OFF;
+      case 'action.punchDatamosh':
+        return state.punchInFx === 'datamosh' ? LC_COLOR.RED_FULL : LC_COLOR.OFF;
+      case 'action.punchGlitch':
+        return state.punchInFx === 'glitch' ? LC_COLOR.RED_FULL : LC_COLOR.OFF;
+      case 'action.punchCrush':
+        return state.punchInFx === 'crush' ? LC_COLOR.RED_FULL : LC_COLOR.OFF;
+      case 'action.preset1':
+        return state.activePresetId === 'mall-1984' ? LC_COLOR.AMBER_FULL : LC_COLOR.OFF;
+      case 'action.preset2':
+        return state.activePresetId === 'broken-vhs' ? LC_COLOR.AMBER_FULL : LC_COLOR.OFF;
+      case 'action.preset3':
+        return state.activePresetId === 'slowed-reverb' ? LC_COLOR.AMBER_FULL : LC_COLOR.OFF;
+      case 'action.preset4':
+        return state.activePresetId === 'circuit-fried' ? LC_COLOR.AMBER_FULL : LC_COLOR.OFF;
+      case 'action.preset5':
+        return state.activePresetId === 'rutt-etra-3d' ? LC_COLOR.AMBER_FULL : LC_COLOR.OFF;
+      case 'action.preset6':
+        return state.activePresetId === 'tunnel-vortex-3d' ? LC_COLOR.AMBER_FULL : LC_COLOR.OFF;
+      case 'action.preset7':
+        return state.activePresetId === 'liquid-datamosh' ? LC_COLOR.AMBER_FULL : LC_COLOR.OFF;
+      default:
+        return LC_COLOR.OFF;
+    }
+  }
+
+  /**
+   * Drives the physical LEDs on the Novation Launch Control (8 Pads + 4 Arrow Buttons)
+   */
+  public syncHardwareLeds(nextState?: Partial<MidiLedState>) {
+    if (nextState) {
+      this.lastLedState = { ...this.lastLedState, ...nextState, activeBank: this.activeBank };
+    }
+    if (!this.midiAccess || !this.midiAccess.outputs) return;
+
+    const state = this.lastLedState;
+    const noteMap = this.getMergedNoteMap();
+    const ccMap = this.getMergedCcMap();
+
+    const factoryNotes = [9, 10, 11, 12, 25, 26, 27, 28];
+    const factoryNotesT2 = [13, 14, 15, 16, 29, 30, 31, 32];
+    const userNotes = [36, 37, 38, 39, 40, 41, 42, 43];
+    const padCcs = [73, 74, 75, 76, 77, 78, 79, 80];
+
+    // Channels to broadcast LED states on: last active channel from hardware + Ch 1 (0) + Ch 9 (8, Factory Template 1 default)
+    const channels = Array.from(new Set([this.lastActiveChannel, 0, 8]));
+
+    // Arrow LEDs indicate active Knob Bank:
+    // Bank 1 (0): Up ▲ = ON, Down ▼ = OFF
+    // Bank 2 (1): Up ▲ = ON, Down ▼ = ON
+    // Bank 3 (2): Up ▲ = OFF, Down ▼ = ON
+    const upArrowColor = state.activeBank === 0 || state.activeBank === 1 ? LC_COLOR.RED_FULL : 0;
+    const downArrowColor = state.activeBank === 1 || state.activeBank === 2 ? LC_COLOR.RED_FULL : 0;
+    const leftArrowColor = LC_COLOR.RED_DIM;
+    const rightArrowColor = LC_COLOR.RED_DIM;
+
+    for (const output of this.midiAccess.outputs.values()) {
+      try {
+        if (typeof output.open === 'function') {
+          output.open().catch?.(() => {});
+        }
+
+        // 1. Update 8 Pads across Note & CC modes
+        for (let padIdx = 0; padIdx < 8; padIdx++) {
+          const fn1 = factoryNotes[padIdx];
+          const fn2 = factoryNotesT2[padIdx];
+          const un = userNotes[padIdx];
+          const pcc = padCcs[padIdx];
+
+          const target = noteMap[fn1] || noteMap[un] || ccMap[pcc];
+          const color = this.getTargetLedColor(target, state, padIdx);
+
+          for (const ch of channels) {
+            output.send([0x90 | ch, fn1, color]);
+            output.send([0x90 | ch, fn2, color]);
+            output.send([0x90 | ch, un, color]);
+            output.send([0xb0 | ch, pcc, color]);
+          }
+
+          // Official Novation Launch Control SysEx LED command (F0 00 20 29 02 0A 78 <Template> <LED> <Color> F7)
+          if (this.sysexEnabled) {
+            for (const tmpl of [this.lastActiveChannel, 0, 8]) {
+              output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, padIdx, color, 0xf7]);
+            }
+          }
+        }
+
+        // 2. Update 4 Directional Arrow Button LEDs (CC 114=Up, 115=Down, 116=Left, 117=Right)
+        for (const ch of channels) {
+          output.send([0xb0 | ch, 114, upArrowColor]);
+          output.send([0xb0 | ch, 115, downArrowColor]);
+          output.send([0xb0 | ch, 116, leftArrowColor]);
+          output.send([0xb0 | ch, 117, rightArrowColor]);
+        }
+        if (this.sysexEnabled) {
+          for (const tmpl of [this.lastActiveChannel, 0, 8]) {
+            output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, 8, upArrowColor, 0xf7]);
+            output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, 9, downArrowColor, 0xf7]);
+            output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, 10, leftArrowColor, 0xf7]);
+            output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, 11, rightArrowColor, 0xf7]);
+          }
+        }
+      } catch {
+        // Ignore individual port send errors
+      }
+    }
+  }
+
+  private triggerPadFlash(padIdx: number) {
+    this.flashPadIndex = padIdx;
+    this.syncHardwareLeds();
+    if (this.flashPadTimer) clearTimeout(this.flashPadTimer);
+    this.flashPadTimer = setTimeout(() => {
+      this.flashPadIndex = null;
+      this.syncHardwareLeds();
+    }, 320);
   }
 
   private setupInputs() {
@@ -367,6 +680,9 @@ export class MidiEngine {
     this.deviceName = found ? (preferredName || 'MIDI Controller') : 'No Device';
 
     this.stateChangeListeners.forEach(cb => cb(this.isConnected, this.deviceName));
+    if (found) {
+      setTimeout(() => this.syncHardwareLeds(), 60);
+    }
   }
 
   private handleMidiMessage(msg: any, deviceName: string) {
@@ -381,9 +697,19 @@ export class MidiEngine {
 
     if (!isCC && !isNoteOn && !isNoteOff) return;
 
+    this.lastActiveChannel = channel;
+
     const paramNumber = data1;
     const value = data2;
     const normalized = value / 127;
+
+    // If a momentary pad or arrow button is released on the Launch Control, its internal firmware turns off the LED.
+    // Re-sync our stateful LEDs right after release so active toggles (REC, PLAY, FREEZE, LFO, PRESET, BANK) stay lit!
+    if (isNoteOff || (isCC && value === 0 && paramNumber >= 73)) {
+      setTimeout(() => this.syncHardwareLeds(), 15);
+      setTimeout(() => this.syncHardwareLeds(), 70);
+      return;
+    }
 
     // 1. Handle MIDI Learn Mode
     if (this.learningTarget && (isCC || isNoteOn)) {
@@ -405,25 +731,39 @@ export class MidiEngine {
       return;
     }
 
-    // 2. Resolve mapped target
+    // 2. Resolve mapped target (aware of active Knob Bank 0..2 for CC 21..28 & 41..48)
     let target: MidiTarget | undefined;
     if (isCC) {
-      target = this.getMergedCcMap()[paramNumber];
+      target = this.getMergedCcMap(this.activeBank)[paramNumber];
     } else if (isNoteOn) {
       target = this.getMergedNoteMap()[paramNumber];
     }
 
-    // Log in DevTools console with clear colors
-    console.log(
-      `%c[MIDI IN]%c Dev:${deviceName} | Ch:${channel + 1} | ${isCC ? 'CC' : 'Note'}:${paramNumber} | Val:${value} ${target ? '-> [' + target + ']' : '(unmapped)'}`,
-      'background: #1e293b; color: #38bdf8; font-weight: bold; padding: 2px 4px; border-radius: 2px;',
-      'color: #e2e8f0;'
-    );
+    // Flash pad briefly on one-shot actions (Snapshot, Tap Tempo, Prev/Next Track)
+    if (isNoteOn || (isCC && paramNumber >= 73 && paramNumber <= 80 && value > 0)) {
+      const padIdx = isCC
+        ? paramNumber - 73
+        : [9, 10, 11, 12, 25, 26, 27, 28].indexOf(paramNumber) >= 0
+          ? [9, 10, 11, 12, 25, 26, 27, 28].indexOf(paramNumber)
+          : paramNumber - 36;
+      if (
+        padIdx >= 0 &&
+        padIdx < 8 &&
+        (target === 'action.snapshot' || target === 'action.tapTempo' || target === 'action.nextTrack' || target === 'action.prevTrack')
+      ) {
+        this.triggerPadFlash(padIdx);
+      }
+    }
 
     // 3. Dispatch to Audio / Video / Action State
     const isTrigger = isNoteOn || (isCC && value > 0);
     if (target && this.dispatchFn) {
       this.dispatchFn(target, normalized, isTrigger);
+    }
+
+    // Re-sync LEDs shortly after trigger so toggled states reflect immediately on the pads
+    if (isTrigger && target?.startsWith('action.')) {
+      setTimeout(() => this.syncHardwareLeds(), 25);
     }
 
     // 4. Notify UI activity listeners (LED indicators)
@@ -442,11 +782,16 @@ export class MidiEngine {
     this.activityListeners.forEach(cb => cb(event));
   }
 
-  private getMergedCcMap(): Record<number, MidiTarget> {
+  private getMergedCcMap(bankIndex?: number): Record<number, MidiTarget> {
+    const b = bankIndex !== undefined ? bankIndex : this.activeBank;
+    const bankKnobs = LAUNCH_CONTROL_BANKS[b]?.knobCcMap || LAUNCH_CONTROL_BANKS[0].knobCcMap;
+    const customBankKnobs = this.customBankKnobMaps[b] || {};
     return {
       ...GENERIC_PROFILE.ccMap,
       ...LAUNCH_CONTROL_PROFILE.ccMap,
-      ...this.customCcMap
+      ...this.customCcMap,
+      ...bankKnobs,
+      ...customBankKnobs
     };
   }
 
@@ -466,6 +811,9 @@ export class MidiEngine {
           const parsed = JSON.parse(raw);
           this.customCcMap = parsed.cc || {};
           this.customNoteMap = parsed.notes || {};
+          if (Array.isArray(parsed.bankKnobs) && parsed.bankKnobs.length === 3) {
+            this.customBankKnobMaps = parsed.bankKnobs;
+          }
         }
       }
     } catch {}
@@ -476,7 +824,8 @@ export class MidiEngine {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
           cc: this.customCcMap,
-          notes: this.customNoteMap
+          notes: this.customNoteMap,
+          bankKnobs: this.customBankKnobMaps
         }));
       }
     } catch {}

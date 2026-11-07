@@ -126,6 +126,7 @@ export const App: React.FC = () => {
     resetClean?: () => void;
     snapshot?: () => void;
     recordToggle?: () => void;
+    recordWavToggle?: () => void;
     nextTrack?: () => void;
     prevTrack?: () => void;
     applyPreset?: (p: Preset) => void;
@@ -605,16 +606,24 @@ export const App: React.FC = () => {
       setMidiDeviceName(name);
     });
 
+    engine.onBankChange((_bankIdx, bank) => {
+      showToast(`🎛️ LAUNCH CONTROL : ${bank.name}`, bank.description);
+    });
+
     engine.onActivity((ev) => {
       if (ev.type === 'noteOn' || (ev.type === 'cc' && ev.value > 0)) {
+        // Skip duplicate toast when pressing bank arrows (already handled by onBankChange)
+        if (ev.targetMapped === 'action.bankPrev' || ev.targetMapped === 'action.bankNext') {
+          return;
+        }
         const actionLabel = ev.targetMapped 
           ? ev.targetMapped.replace('action.', '').replace('video.', 'Vidéo: ').replace('audio.', 'Audio: ') 
           : null;
         showToast(
           actionLabel 
-            ? `🎛️ MIDI : ${actionLabel.toUpperCase()}` 
+            ? `🎛️ MIDI [${engine.getActiveBankInfo().shortName}] : ${actionLabel.toUpperCase()}` 
             : `🎛️ Signal MIDI : ${ev.type.toUpperCase()} #${ev.paramNumber}`,
-          ev.targetMapped ? `Déclenché via Pad/Bouton #${ev.paramNumber}` : `Valeur: ${ev.value} (Ouvrez le menu MIDI pour assigner)`
+          ev.targetMapped ? `Contrôle #${ev.paramNumber} (Valeur: ${ev.value})` : `Valeur: ${ev.value} (Ouvrez le menu MIDI pour assigner)`
         );
       }
     });
@@ -623,7 +632,7 @@ export const App: React.FC = () => {
       if (target.startsWith('video.')) {
         const key = target.replace('video.', '') as keyof VideoBendingParams;
         setActivePresetId((prev) => (prev === 'custom' ? prev : 'custom'));
-        setVideoParams((prev) => ({ ...prev, [key]: normalized }));
+        setVideoParams((prev) => ({ ...prev, [key]: Number(normalized.toFixed(3)) }));
       } else if (target.startsWith('audio.')) {
         const key = target.replace('audio.', '');
         setActivePresetId((prev) => (prev === 'custom' ? prev : 'custom'));
@@ -631,15 +640,21 @@ export const App: React.FC = () => {
           const hz = Math.round(80 * Math.pow(18000 / 80, normalized));
           setAudioParams((prev) => ({ ...prev, filterCutoff: hz }));
         } else if (key === 'filterResonance') {
-          setAudioParams((prev) => ({ ...prev, filterResonance: 0.1 + normalized * 18.0 }));
+          setAudioParams((prev) => ({ ...prev, filterResonance: Number((0.1 + normalized * 18.0).toFixed(2)) }));
         } else if (key === 'tapeSpeed') {
-          setAudioParams((prev) => ({ ...prev, tapeSpeed: 0.5 + normalized * 1.0 }));
+          setAudioParams((prev) => ({ ...prev, tapeSpeed: Number((0.5 + normalized * 1.0).toFixed(2)) }));
+        } else if (key === 'wowRate') {
+          setAudioParams((prev) => ({ ...prev, wowRate: Number((0.4 + normalized * 2.1).toFixed(2)) }));
+        } else if (key === 'flutterRate') {
+          setAudioParams((prev) => ({ ...prev, flutterRate: Number((5.0 + normalized * 10.0).toFixed(2)) }));
+        } else if (key === 'delayTime') {
+          setAudioParams((prev) => ({ ...prev, delayTime: Number((0.005 + normalized * 0.445).toFixed(3)) }));
         } else if (key === 'stutterSpeed') {
-          setAudioParams((prev) => ({ ...prev, stutterSpeed: 0.05 + normalized * 0.30 }));
+          setAudioParams((prev) => ({ ...prev, stutterSpeed: Number((0.05 + normalized * 0.30).toFixed(2)) }));
         } else if (key === 'ringModFreq') {
           setAudioParams((prev) => ({ ...prev, ringModFreq: Math.round(30 + normalized * 1170) }));
         } else {
-          setAudioParams((prev) => ({ ...prev, [key]: normalized }));
+          setAudioParams((prev) => ({ ...prev, [key]: Number(normalized.toFixed(3)) }));
         }
       } else if (target.startsWith('mod.')) {
         const h = actionHandlersRef.current;
@@ -685,28 +700,63 @@ export const App: React.FC = () => {
           }));
         } else if (target === 'mod.lfoDepth') {
           setLfoConfig((prev) => ({ ...prev, enabled: true, depth: Number(normalized.toFixed(2)) }));
+        } else if (target === 'mod.phaseSpread') {
+          setLfoConfig((prev) => ({ ...prev, enabled: true, phaseSpread: Number(normalized.toFixed(2)) }));
         }
       } else if (target.startsWith('action.') && isTrigger) {
         const h = actionHandlersRef.current;
-        if (target === 'action.playToggle' && h.playToggle) h.playToggle();
+        if (target === 'action.bankPrev') engine.stepBank(-1);
+        else if (target === 'action.bankNext') engine.stepBank(1);
+        else if (target === 'action.playToggle' && h.playToggle) h.playToggle();
         else if (target === 'action.tapeFreeze' && h.tapeFreeze) h.tapeFreeze();
         else if (target === 'action.randomize' && h.randomize) h.randomize();
         else if (target === 'action.resetClean' && h.resetClean) h.resetClean();
         else if (target === 'action.snapshot' && h.snapshot) h.snapshot();
         else if (target === 'action.recordToggle' && h.recordToggle) h.recordToggle();
+        else if (target === 'action.recordWavToggle' && h.recordWavToggle) h.recordWavToggle();
         else if (target === 'action.tapTempo' && h.tapTempo) h.tapTempo();
         else if (target === 'action.lfoToggle' && h.lfoToggle) h.lfoToggle();
         else if (target === 'action.vcrOsdToggle' && h.vcrOsdToggle) h.vcrOsdToggle();
-        else if (target === 'action.preset0' && h.applyPreset) h.applyPreset(PRESETS[0]);
-        else if (target === 'action.preset1' && h.applyPreset) h.applyPreset(PRESETS[1]);
-        else if (target === 'action.preset2' && h.applyPreset) h.applyPreset(PRESETS[2]);
-        else if (target === 'action.preset3' && h.applyPreset) h.applyPreset(PRESETS[3]);
+        else if (target === 'action.punchDatamosh') setPunchInFx((prev) => (prev === 'datamosh' ? null : 'datamosh'));
+        else if (target === 'action.punchGlitch') setPunchInFx((prev) => (prev === 'glitch' ? null : 'glitch'));
+        else if (target === 'action.punchCrush') setPunchInFx((prev) => (prev === 'crush' ? null : 'crush'));
+        else if (target === 'action.preset0' && h.applyPreset && PRESETS[0]) h.applyPreset(PRESETS[0]);
+        else if (target === 'action.preset1' && h.applyPreset && PRESETS[1]) h.applyPreset(PRESETS[1]);
+        else if (target === 'action.preset2' && h.applyPreset && PRESETS[2]) h.applyPreset(PRESETS[2]);
+        else if (target === 'action.preset3' && h.applyPreset && PRESETS[3]) h.applyPreset(PRESETS[3]);
         else if (target === 'action.preset4' && h.applyPreset && PRESETS[4]) h.applyPreset(PRESETS[4]);
+        else if (target === 'action.preset5' && h.applyPreset && PRESETS[5]) h.applyPreset(PRESETS[5]);
+        else if (target === 'action.preset6' && h.applyPreset && PRESETS[6]) h.applyPreset(PRESETS[6]);
+        else if (target === 'action.preset7' && h.applyPreset && PRESETS[7]) h.applyPreset(PRESETS[7]);
         else if (target === 'action.nextTrack' && h.nextTrack) h.nextTrack();
         else if (target === 'action.prevTrack' && h.prevTrack) h.prevTrack();
       }
     });
   }, [showToast]);
+
+  // Real-time Hardware LED Sync to Novation Launch Control Pads & Arrow Buttons
+  useEffect(() => {
+    if (!midiEngineRef.current) return;
+    midiEngineRef.current.syncHardwareLeds({
+      isPlaying,
+      isTapeFreeze,
+      isRecording,
+      isRecordingWav,
+      lfoEnabled: lfoConfig.enabled,
+      showVcrOsd,
+      activePresetId,
+      punchInFx
+    });
+  }, [
+    isPlaying,
+    isTapeFreeze,
+    isRecording,
+    isRecordingWav,
+    lfoConfig.enabled,
+    showVcrOsd,
+    activePresetId,
+    punchInFx
+  ]);
 
   // Initialize Web Audio Engine
   useEffect(() => {
@@ -2233,6 +2283,7 @@ export const App: React.FC = () => {
     resetClean: () => handleApplyPreset(PRESETS[0]),
     snapshot: handleTakeSnapshot,
     recordToggle: handleToggleRecord,
+    recordWavToggle: handleToggleRecordWav,
     nextTrack: handleNextTrack,
     prevTrack: handlePrevTrack,
     applyPreset: handleApplyPreset,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Radio, Sliders, RefreshCw, Sparkles, Volume2, Video, Zap } from 'lucide-react';
-import { MidiEngine, LAUNCH_CONTROL_PROFILE } from '../midi/MidiEngine.js';
+import { MidiEngine, LAUNCH_CONTROL_PROFILE, LAUNCH_CONTROL_BANKS } from '../midi/MidiEngine.js';
 import { MidiActivityEvent, MIDI_TARGET_CATALOG, MidiTarget } from '../midi/midiTypes.js';
 
 interface MidiModalProps {
@@ -12,6 +12,7 @@ interface MidiModalProps {
 export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngine }) => {
   const [lastActivity, setLastActivity] = useState<MidiActivityEvent | null>(null);
   const [learningTarget, setLearningTarget] = useState<MidiTarget | null>(null);
+  const [activeBank, setActiveBank] = useState<number>(midiEngine ? midiEngine.getActiveBank() : 0);
   const [bindings, setBindings] = useState<{ cc: Record<number, MidiTarget>; notes: Record<number, MidiTarget> }>({
     cc: { ...LAUNCH_CONTROL_PROFILE.ccMap },
     notes: { ...LAUNCH_CONTROL_PROFILE.noteMap }
@@ -24,8 +25,10 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
   useEffect(() => {
     if (!midiEngine) return;
 
-    const refreshBindings = () => {
-      setBindings(midiEngine.getAllBindings());
+    const refreshBindings = (bankOverride?: number) => {
+      const b = bankOverride !== undefined ? bankOverride : midiEngine.getActiveBank();
+      setActiveBank(b);
+      setBindings(midiEngine.getAllBindings(b));
       setIsConnected(midiEngine.getIsConnected());
       setDeviceName(midiEngine.getDeviceName());
       setMidiError(midiEngine.getLastError());
@@ -38,6 +41,10 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
       setMidiError(midiEngine.getLastError());
     });
 
+    midiEngine.onBankChange((bankIdx) => {
+      refreshBindings(bankIdx);
+    });
+
     midiEngine.onActivity((event) => {
       setLastActivity(event);
       refreshBindings();
@@ -48,6 +55,13 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
   }, [midiEngine, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleSelectBank = (bankIdx: number) => {
+    if (!midiEngine) return;
+    midiEngine.setActiveBank(bankIdx, false);
+    setActiveBank(bankIdx);
+    setBindings(midiEngine.getAllBindings(bankIdx));
+  };
 
   const handleRescanMidi = async () => {
     if (!midiEngine) return;
@@ -71,7 +85,7 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
   const handleApplyProfile = (profileId: 'launch-control' | 'launch-control-xl' | 'generic') => {
     if (!midiEngine) return;
     midiEngine.resetToProfile(profileId);
-    setBindings(midiEngine.getAllBindings());
+    setBindings(midiEngine.getAllBindings(activeBank));
   };
 
   const SHORT_TARGET_LABELS: Record<string, string> = {
@@ -86,7 +100,9 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
     'video.apertureGrille': 'PHOSPHOR',
     'video.vhsHeadSwitching': 'HEAD SWITCH',
     'video.vHoldDrift': 'V-HOLD',
-    'video.meshDisplacement': '3D RELIEF',
+    'video.meshDisplacement': '3D Z-EXTRUDE',
+    'video.orbit3d': '3D ORBIT',
+    'video.tunnel3d': '3D TUNNEL',
     'video.chromaSmear': 'CHROMA SMEAR',
     'video.luminance': 'LUMINANCE',
     'video.audioReact': 'SIDECHAIN',
@@ -97,8 +113,11 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
     'audio.filterResonance': 'FILTER RES',
     'audio.tapeSpeed': 'TAPE SPEED',
     'audio.wowDepth': 'WOW DETUNE',
+    'audio.wowRate': 'WOW RATE',
     'audio.flutterDepth': 'FLUTTER',
+    'audio.flutterRate': 'FLUTTER RATE',
     'audio.reverbWet': 'MALL REVERB',
+    'audio.delayTime': 'DELAY TIME',
     'audio.tapeTone': 'TAPE TONE',
     'audio.tapeHiss': 'TAPE HISS',
     'audio.tapeDropouts': 'DROPOUTS',
@@ -112,28 +131,38 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
     'mod.lfo1Rate': 'LFO 1 SPD',
     'mod.lfo2Rate': 'LFO 2 SPD',
     'mod.lfoDepth': 'LFO DEPTH',
+    'mod.phaseSpread': 'LFO PHASE',
+    'action.bankPrev': '▲ BANQUE -',
+    'action.bankNext': '▼ BANQUE +',
     'action.playToggle': '▶ PLAY/PAUSE',
     'action.tapeFreeze': '❄ FREEZE',
     'action.randomize': '⚡ RANDOM',
     'action.resetClean': '↺ BYPASS',
     'action.snapshot': '📷 SNAP',
     'action.recordToggle': '● REC MP4',
+    'action.recordWavToggle': '● REC WAV',
     'action.tapTempo': '⏱ TAP BPM',
     'action.lfoToggle': '∿ LFO ON/OFF',
     'action.vcrOsdToggle': '📺 VCR OSD',
+    'action.punchDatamosh': '💥 MOSH FX',
+    'action.punchGlitch': '⚡ GLITCH FX',
+    'action.punchCrush': '🔊 CRUSH FX',
     'action.preset0': 'P1: BYPASS',
     'action.preset1': 'P2: MALL 84',
     'action.preset2': 'P3: VHS TAPE',
     'action.preset3': 'P4: NIGHTWAVE',
     'action.preset4': 'P5: 8-BIT',
+    'action.preset5': 'P6: 3D RELIEF',
+    'action.preset6': 'P7: 3D TUNNEL',
+    'action.preset7': 'P8: DATAMOSH',
     'action.nextTrack': '► PISTE SUIV',
     'action.prevTrack': '◄ PISTE PRÉC'
   };
 
   const handleAssignCcDirect = (cc: number, target: MidiTarget) => {
     if (!midiEngine) return;
-    midiEngine.setBinding('cc', cc, target);
-    setBindings(midiEngine.getAllBindings());
+    midiEngine.setBinding('cc', cc, target, activeBank);
+    setBindings(midiEngine.getAllBindings(activeBank));
   };
 
   const handleAssignPadDirect = (padIndex: number, target: MidiTarget) => {
@@ -271,13 +300,41 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
 
         {/* Interactive Visual Novation Launch Control Hardware Map */}
         <div className="px-6 py-3 bg-[#0b0d12] border-b border-[#242933] font-mono">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
-              🎛️ VUE MATÉRIELLE NOVATION LAUNCH CONTROL (Cliquez sur un contrôle pour changer sa cible)
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
+                🎛️ NOVATION LAUNCH CONTROL (16 POTARDS × 3 BANQUES = 48 CÔNTROLES + 8 PADS LED)
+              </span>
+            </div>
+
+            {/* 3 Knob Bank Switcher Tabs (Also controlled via Physical Up ▲ / Down ▼ Arrows!) */}
+            <div className="flex items-center gap-1">
+              {LAUNCH_CONTROL_BANKS.map((bank) => {
+                const isSelected = activeBank === bank.id;
+                return (
+                  <button
+                    key={bank.id}
+                    type="button"
+                    onClick={() => handleSelectBank(bank.id)}
+                    className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-500 text-black border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.5)]'
+                        : 'bg-[#141821] text-neutral-400 border-[#262c3a] hover:text-white'
+                    }`}
+                    title={bank.description}
+                  >
+                    {bank.shortName}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mb-2 text-[9px] text-cyan-300/90 flex items-center justify-between bg-cyan-950/30 border border-cyan-800/40 px-2.5 py-1 rounded">
+            <span>
+              <strong>{LAUNCH_CONTROL_BANKS[activeBank]?.name}</strong> — Utilisez les flèches physiques <strong>▲ (Haut)</strong> et <strong>▼ (Bas)</strong> du Launch Control pour changer de banque à la volée !
             </span>
-            <span className="text-[9px] text-neutral-500">
-              Rangée 1 = Vidéo (CC 21-28) • Rangée 2 = Audio & Morph (CC 41-48) • Pads 1-8 • Flèches ▲▼◄►
-            </span>
+            <span className="text-emerald-300 font-bold">💡 Retour LED Pads Actif (REC=Rouge, PLAY=Vert, FREEZE=Orange)</span>
           </div>
 
           <div className="flex items-stretch gap-2.5">
@@ -396,8 +453,8 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
             <div className="w-24 flex flex-col justify-between gap-1 bg-[#12161f] border border-[#262c3a] rounded p-1.5">
               <span className="text-[7px] text-neutral-400 font-bold text-center uppercase">FLÈCHES DROITE</span>
               {[
-                { cc: 114, icon: '▲', defaultTgt: 'action.tapTempo' as MidiTarget },
-                { cc: 115, icon: '▼', defaultTgt: 'action.lfoToggle' as MidiTarget },
+                { cc: 114, icon: '▲', defaultTgt: 'action.bankPrev' as MidiTarget },
+                { cc: 115, icon: '▼', defaultTgt: 'action.bankNext' as MidiTarget },
                 { cc: 116, icon: '◄', defaultTgt: 'action.prevTrack' as MidiTarget },
                 { cc: 117, icon: '►', defaultTgt: 'action.nextTrack' as MidiTarget }
               ].map(({ cc, icon, defaultTgt }) => {
