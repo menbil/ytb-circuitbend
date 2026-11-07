@@ -31,7 +31,7 @@ export function computeBitcrushCurve(amount: number, samples: number = 2048): Fl
 
 /**
  * Generates an analog tape/tube soft-clipping saturation curve using hyperbolic tangent (tanh).
- * Normalizes output gain so peak signal never exceeds [-1, +1].
+ * Uses gentle analog warmth without excessive makeup gain so mastered tracks never brickwall-clip.
  */
 export function computeDriveCurve(amount: number, samples: number = 2048): Float32Array {
   if (amount <= 0.01) {
@@ -43,13 +43,17 @@ export function computeDriveCurve(amount: number, samples: number = 2048): Float
   }
 
   const curve = new Float32Array(samples);
-  const driveFactor = 1.0 + amount * 3.8;
-  const norm = Math.tanh(driveFactor); // Gain normalization factor
+  const driveFactor = 1.0 + amount * 2.2;
+  const norm = Math.tanh(driveFactor);
+  // Attenuate output slightly as drive increases so perceived loudness stays balanced and warm
+  const trim = 1.0 - amount * 0.22;
 
   for (let i = 0; i < samples; i++) {
     const x = (i / (samples - 1)) * 2 - 1;
-    const y = Math.tanh(x * driveFactor) / norm;
-    curve[i] = y;
+    const wet = (Math.tanh(x * driveFactor) / norm) * trim;
+    // Blend dry + wet for smooth analog tape compression at low/mid drive
+    const blend = Math.min(1.0, amount * 1.15);
+    curve[i] = x * (1.0 - blend) + wet * blend;
   }
   return curve;
 }

@@ -2029,9 +2029,9 @@ export const App: React.FC = () => {
       stutterSpeed: Number(rnd(0.07, 0.22).toFixed(2)),
       reverbWet: 0.12,
       bitcrush: 0.0,
-      drive: 0.05,
+      drive: 0.0,
       ringModMix: 0.0,
-      ringModFreq: Math.round(rnd(80, 480)),
+      ringModFreq: Math.round(rnd(80, 320)),
       filterCutoff: 12000,
       filterResonance: 1.0,
       filterType: 'lowpass'
@@ -2056,7 +2056,7 @@ export const App: React.FC = () => {
         baseAudio.tapeSpeed = Number(rnd(0.86, 0.98).toFixed(2));
         baseAudio.reverbWet = Number(rnd(0.35, 0.62).toFixed(2));
         baseAudio.filterCutoff = Math.round(rnd(3200, 7500));
-        baseAudio.filterResonance = Number(rnd(2.2, 5.5).toFixed(1));
+        baseAudio.filterResonance = Number(rnd(1.5, 3.5).toFixed(1));
         lfo1Shape = 'sine';
         lfo2Shape = 'drift';
         routings = [
@@ -2095,9 +2095,9 @@ export const App: React.FC = () => {
         baseVideo.scanlines = 0.0;
         baseVideo.crtCurvature = 0.05;
         baseAudio.tapeSpeed = Number(rnd(0.75, 0.92).toFixed(2));
-        baseAudio.filterCutoff = Math.round(rnd(900, 2600));
-        baseAudio.filterResonance = Number(rnd(3.0, 7.5).toFixed(1));
-        baseAudio.drive = Number(rnd(0.18, 0.42).toFixed(2));
+        baseAudio.filterCutoff = Math.round(rnd(1100, 2900));
+        baseAudio.filterResonance = Number(rnd(1.8, 4.0).toFixed(1));
+        baseAudio.drive = Number(rnd(0.0, 0.08).toFixed(2));
         lfo1Shape = 'drift';
         lfo2Shape = 'saw';
         routings = [
@@ -2131,18 +2131,18 @@ export const App: React.FC = () => {
       case 4: {
         // 5. CYBERPUNK 8-BIT CIRCUIT SHORT & RING MOD
         styleName = '⚡ CYBERPUNK GLITCH & RING-MOD';
-        styleSub = 'Décrochage H-Sync violent + Bitcrusher + Ring Modulator';
+        styleSub = 'Décrochage H-Sync + Grain 8-bit doux + Ring Mod subtil';
         baseVideo.glitchIntensity = Number(rnd(0.58, 0.90).toFixed(2));
         baseVideo.rgbShift = Number(rnd(0.45, 0.85).toFixed(2));
         baseVideo.colorBleed = Number(rnd(0.40, 0.78).toFixed(2));
         baseVideo.vhsHeadSwitching = Number(rnd(0.35, 0.75).toFixed(2));
-        baseAudio.bitcrush = Number(rnd(0.22, 0.58).toFixed(2));
-        baseAudio.ringModMix = Number(rnd(0.20, 0.48).toFixed(2));
-        baseAudio.ringModFreq = Math.round(rnd(140, 520));
-        baseAudio.drive = Number(rnd(0.25, 0.55).toFixed(2));
-        baseAudio.filterType = pick(['bandpass', 'highpass', 'lowpass']);
-        baseAudio.filterCutoff = Math.round(rnd(1400, 4800));
-        baseAudio.filterResonance = Number(rnd(4.0, 10.0).toFixed(1));
+        baseAudio.bitcrush = Number(rnd(0.08, 0.24).toFixed(2));
+        baseAudio.ringModMix = Number(rnd(0.08, 0.22).toFixed(2));
+        baseAudio.ringModFreq = Math.round(rnd(110, 320));
+        baseAudio.drive = Number(rnd(0.03, 0.11).toFixed(2));
+        baseAudio.filterType = 'lowpass';
+        baseAudio.filterCutoff = Math.round(rnd(2200, 5800));
+        baseAudio.filterResonance = Number(rnd(1.8, 4.2).toFixed(1));
         lfo1Shape = 'random';
         lfo2Shape = 'square';
         routings = [
@@ -2177,14 +2177,14 @@ export const App: React.FC = () => {
       case 6: {
         // 7. SOLARIZED ACID PSYCHEDELIA
         styleName = '🌈 SOLARIZED ACID PSYCHEDELIA';
-        styleSub = 'Inversion de luminance + Color Bleed + Filtre Acide Résonant';
+        styleSub = 'Inversion de luminance + Color Bleed + Filtre Acide Chaud';
         baseVideo.luminance = Number(rnd(0.68, 0.96).toFixed(2));
         baseVideo.colorBleed = Number(rnd(0.65, 0.95).toFixed(2));
         baseVideo.feedback = Number(rnd(0.45, 0.82).toFixed(2));
         baseVideo.orbit3d = Number(rnd(0.25, 0.55).toFixed(2));
-        baseAudio.filterCutoff = Math.round(rnd(650, 2800));
-        baseAudio.filterResonance = Number(rnd(7.5, 15.0).toFixed(1));
-        baseAudio.drive = Number(rnd(0.30, 0.65).toFixed(2));
+        baseAudio.filterCutoff = Math.round(rnd(950, 3200));
+        baseAudio.filterResonance = Number(rnd(3.0, 6.2).toFixed(1));
+        baseAudio.drive = Number(rnd(0.04, 0.12).toFixed(2));
         baseAudio.reverbWet = Number(rnd(0.30, 0.55).toFixed(2));
         lfo1Shape = 'saw';
         lfo2Shape = 'triangle';
@@ -2205,7 +2205,7 @@ export const App: React.FC = () => {
         baseVideo.audioReact = Number(rnd(0.80, 1.0).toFixed(2));
         baseVideo.datamosh = Number(rnd(0.25, 0.55).toFixed(2));
         baseAudio.tapeSpeed = Number(rnd(0.88, 1.05).toFixed(2));
-        baseAudio.drive = Number(rnd(0.15, 0.35).toFixed(2));
+        baseAudio.drive = Number(rnd(0.0, 0.06).toFixed(2));
         baseAudio.reverbWet = Number(rnd(0.25, 0.50).toFixed(2));
         baseAudio.filterCutoff = Math.round(rnd(2800, 8500));
         lfo1Shape = 'sawDown';
@@ -2222,7 +2222,7 @@ export const App: React.FC = () => {
     const randomTargets: Record<LfoTargetId, boolean> = {
       filterCutoff: styleIdx === 2 || styleIdx === 6,
       tapeSpeed: styleIdx === 5,
-      drive: styleIdx === 4,
+      drive: false,
       reverbWet: styleIdx === 1 || styleIdx === 3,
       glitchIntensity: styleIdx === 4,
       rgbShift: styleIdx === 1 || styleIdx === 4,
