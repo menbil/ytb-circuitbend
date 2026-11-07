@@ -1239,7 +1239,7 @@ export const App: React.FC = () => {
   const activateAudioReactiveVisuals = useCallback(() => {
     setVideoParams((prev) => ({
       ...prev,
-      audioReactive: Math.max(prev.audioReactive || 0, 0.78)
+      audioReact: Math.max(prev.audioReact || 0, 0.78)
     }));
     setLfoConfig((prev) => ({ ...prev, enabled: true }));
     setModRoutings((prev) => {
