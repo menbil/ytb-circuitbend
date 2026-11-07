@@ -43,6 +43,7 @@ interface RackControlsProps {
   modulatedVideoParams?: VideoBendingParams;
   modulatedAudioParams?: AudioBendingParams;
   activePresetId: string;
+  randomStyleLabel?: string | null;
   analyser: AnalyserNode | null;
   isTapeStopped?: boolean;
   isFreezeActive?: boolean;
@@ -105,6 +106,7 @@ export const RackControls: React.FC<RackControlsProps> = ({
   modulatedVideoParams,
   modulatedAudioParams,
   activePresetId,
+  randomStyleLabel,
   analyser,
   isTapeStopped = false,
   isFreezeActive = false,
@@ -259,6 +261,7 @@ export const RackControls: React.FC<RackControlsProps> = ({
           </span>
           {PRESETS.map((preset, pIdx) => {
             const isActive = activePresetId === preset.id;
+            const is3d = preset.badge.includes('3D') || preset.badge.includes('DATAMOSH');
             return (
               <button
                 key={preset.id}
@@ -268,17 +271,37 @@ export const RackControls: React.FC<RackControlsProps> = ({
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
                 onClick={() => onApplyPreset(preset)}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all border cursor-grab active:cursor-grabbing ${
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all border flex items-center gap-1 cursor-grab active:cursor-grabbing ${
                   isActive
                     ? 'bg-amber-500 text-black border-amber-400 shadow-[0_0_10px_rgba(255,157,0,0.5)]'
+                    : is3d
+                    ? 'bg-cyan-950/60 text-cyan-200 border-cyan-600/80 hover:bg-cyan-900/70 hover:text-white'
                     : 'bg-neutral-900/80 text-neutral-300 border-neutral-700/80 hover:bg-neutral-800 hover:text-white'
                 }`}
                 title={`${preset.description} [Touche ${pIdx + 1}] • Glissez vers Morph A/B !`}
               >
-                {preset.name}
+                <span
+                  className={`text-[8px] px-1 rounded font-extrabold ${
+                    isActive
+                      ? 'bg-black/25 text-black'
+                      : is3d
+                      ? 'bg-cyan-500/30 text-cyan-300'
+                      : 'bg-amber-500/20 text-amber-400'
+                  }`}
+                >
+                  {preset.badge}
+                </span>
+                <span>{preset.name}</span>
               </button>
             );
           })}
+
+          {activePresetId === 'custom-random' && randomStyleLabel && (
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-fuchsia-950/80 text-fuchsia-200 border border-fuchsia-500 shadow-[0_0_12px_rgba(217,70,239,0.5)] flex items-center gap-1">
+              <span className="text-[8px] px-1 bg-fuchsia-500 text-black rounded font-extrabold">RANDOM</span>
+              <span>{randomStyleLabel}</span>
+            </span>
+          )}
 
           {/* User Saved Presets */}
           {userPresets.map((up) => {

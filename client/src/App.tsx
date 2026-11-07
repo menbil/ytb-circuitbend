@@ -1979,6 +1979,7 @@ export const App: React.FC = () => {
   }, []);
 
   const lastRandomStyleRef = useRef<number>(-1);
+  const [randomStyleLabel, setRandomStyleLabel] = useState<string | null>(null);
 
   const handleRandomize = () => {
     setActivePresetId('custom-random');
@@ -2265,6 +2266,7 @@ export const App: React.FC = () => {
 
     setVideoParams(baseVideo);
     setAudioParams(baseAudio);
+    setRandomStyleLabel(styleName);
     showToast(`🎲 RANDOM : ${styleName}`, styleSub);
   };
 
@@ -2560,6 +2562,7 @@ export const App: React.FC = () => {
             modulatedVideoParams={modulatedVideoParams}
             modulatedAudioParams={modulatedAudioParams}
             activePresetId={activePresetId}
+            randomStyleLabel={randomStyleLabel}
             analyser={audioEngineRef.current ? audioEngineRef.current.getAnalyser() : null}
             isTapeFreeze={isTapeFreeze}
             isRecording={isRecording}
