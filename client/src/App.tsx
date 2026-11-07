@@ -22,6 +22,7 @@ import { PRESETS } from './presets.js';
 import { AudioCircuitEngine } from './audio/AudioCircuitEngine.js';
 import { MidiEngine } from './midi/MidiEngine.js';
 import { MidiModal } from './components/MidiModal.js';
+import { AudioInputModal } from './components/AudioInputModal.js';
 import { MidiTarget } from './midi/midiTypes.js';
 import { Header } from './components/Header.js';
 import { VideoViewport } from './components/VideoViewport.js';
@@ -83,7 +84,21 @@ export const App: React.FC = () => {
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [audioState, setAudioState] = useState<string>('uninitialized');
 
-  // Direct Recording & Web MIDI State
+  // Desktop Local Cache, A/B Loop & Dual-Window VJ State
+  const [cachedIds, setCachedIds] = useState<string[]>([]);
+  const [activeDownloads, setActiveDownloads] = useState<string[]>([]);
+  const [cacheSizeMb, setCacheSizeMb] = useState<number>(0);
+  const [loopStart, setLoopStart] = useState<number | null>(null);
+  const [loopEnd, setLoopEnd] = useState<number | null>(null);
+  const [isVjWindowOpen, setIsVjWindowOpen] = useState<boolean>(false);
+  const vjWindowRef = useRef<Window | null>(null);
+  const vjChannelRef = useRef<BroadcastChannel | null>(null);
+  const [externalBassEnergy, setExternalBassEnergy] = useState<number>(0);
+  const isVjProjectionMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('vj') === '1';
+
+  // Direct Recording (MP4 Video + 24-bit WAV Stem) & Web MIDI State
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
@@ -91,12 +106,19 @@ export const App: React.FC = () => {
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordTimerRef = useRef<any>(null);
 
+  const [isRecordingWav, setIsRecordingWav] = useState<boolean>(false);
+  const [wavRecordingDuration, setWavRecordingDuration] = useState<number>(0);
+  const wavRecorderRef = useRef<MediaRecorder | null>(null);
+  const wavChunksRef = useRef<Blob[]>([]);
+  const wavTimerRef = useRef<any>(null);
+
   const [midiConnected, setMidiConnected] = useState<boolean>(false);
   const [, setMidiDeviceName] = useState<string | null>(null);
   const [midiToast, setMidiToast] = useState<{ message: string; sub?: string } | null>(null);
   const midiToastTimerRef = useRef<any>(null);
   const midiEngineRef = useRef<MidiEngine | null>(null);
   const [isMidiModalOpen, setIsMidiModalOpen] = useState<boolean>(false);
+  const [isAudioInputModalOpen, setIsAudioInputModalOpen] = useState<boolean>(false);
   const actionHandlersRef = useRef<{
     playToggle?: () => void;
     tapeFreeze?: () => void;
@@ -393,7 +415,7 @@ export const App: React.FC = () => {
       }
     };
 
-    const loop = () => {
+    const stepModulation = () => {
       const now = performance.now() / 1000;
 
       const lfo1Rate = getEffectiveLfoRateHz(
@@ -558,7 +580,12 @@ export const App: React.FC = () => {
         setModulatedVideoParams(nextVideo);
         setModulatedAudioParams(nextAudio);
       }
+    };
 
+    (window as any).__stepModulation = stepModulation;
+
+    const loop = () => {
+      stepModulation();
       animId = requestAnimationFrame(loop);
     };
 
@@ -705,10 +732,52 @@ export const App: React.FC = () => {
     setAudioState(audioEngineRef.current.getContextState());
   }, []);
 
-  // Decode URL `?patch=...` if present on initial load
+  // Refresh Local Disk Cache Status
+  const refreshCacheStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cache/status');
+      if (res.ok) {
+        const data = await res.json();
+        setCachedIds(data.cachedIds || []);
+        setActiveDownloads(data.activeDownloads || []);
+        setCacheSizeMb(data.totalSizeMb || 0);
+      }
+    } catch {}
+  }, []);
+
+  // Poll cache status periodically so UI badges update when background downloads complete
+  useEffect(() => {
+    if (isVjProjectionMode) return;
+    refreshCacheStatus();
+    const timer = setInterval(refreshCacheStatus, 4000);
+    return () => clearInterval(timer);
+  }, [isVjProjectionMode, refreshCacheStatus]);
+
+  // Persist user presets to local disk (`data/presets.json`) + localStorage
+  const persistPresetsToDisk = useCallback((presetsToSave: UserPreset[]) => {
+    try {
+      localStorage.setItem('ytb_circuitbend_user_presets', JSON.stringify(presetsToSave));
+    } catch {}
+    fetch('/api/library/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presets: presetsToSave })
+    }).catch(() => {});
+  }, []);
+
+  // Persist playlist queue to local disk (`data/playlist.json`)
+  const persistPlaylistToDisk = useCallback((title: string, itemsToSave: PlaylistItem[]) => {
+    fetch('/api/library/playlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistTitle: title, items: itemsToSave })
+    }).catch(() => {});
+  }, []);
+
+  // Decode URL `?patch=...` and load persistent desktop library on initial load
   const initialLoadRef = useRef<boolean>(false);
   useEffect(() => {
-    if (initialLoadRef.current) return;
+    if (initialLoadRef.current || isVjProjectionMode) return;
     initialLoadRef.current = true;
 
     const params = new URLSearchParams(window.location.search);
@@ -721,7 +790,6 @@ export const App: React.FC = () => {
         if (decoded.lfo) setLfoConfig((prev) => ({ ...prev, ...decoded.lfo }));
         if (decoded.modRoutings) setModRoutings(decoded.modRoutings);
         setActivePresetId('shared-url');
-        // Clean `?patch=...` from the address bar after importing so refreshes/HMR don't re-trigger it
         window.history.replaceState({}, '', window.location.pathname);
         showToast('🔗 PATCH URL CHARGÉ', 'Réglages restaurés depuis le lien partagé');
       } catch (e) {
@@ -729,7 +797,333 @@ export const App: React.FC = () => {
       }
     }
 
-    appendPlaylistUrl('https://www.youtube.com/watch?v=4RCrvRXUrs4&list=PLqftF03PwhxzYiafvN4C1AzQtDuPeeYqw');
+    // 1. Load saved presets from disk (`data/presets.json`)
+    fetch('/api/library/presets')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.presets) && data.presets.length > 0) {
+          setUserPresets((prev) => {
+            const byId = new Map<string, UserPreset>();
+            for (const p of [...data.presets, ...prev]) {
+              if (p && p.id) byId.set(p.id, p);
+            }
+            return Array.from(byId.values());
+          });
+        }
+      })
+      .catch(() => {});
+
+    // 2. Load saved playlist from disk (`data/playlist.json`) or fall back to initial demo
+    fetch('/api/library/playlist')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.saved?.items && Array.isArray(data.saved.items) && data.saved.items.length > 0) {
+          setPlaylist(data.saved.items);
+          setPlaylistTitle(data.saved.playlistTitle || 'DESKTOP QUEUE');
+          setTimeout(() => loadTrackAtIndex(0, data.saved.items), 50);
+        } else {
+          appendPlaylistUrl('https://www.youtube.com/watch?v=4RCrvRXUrs4&list=PLqftF03PwhxzYiafvN4C1AzQtDuPeeYqw');
+        }
+      })
+      .catch(() => {
+        appendPlaylistUrl('https://www.youtube.com/watch?v=4RCrvRXUrs4&list=PLqftF03PwhxzYiafvN4C1AzQtDuPeeYqw');
+      });
+  }, [isVjProjectionMode, showToast]);
+
+  // Dual-Window VJ BroadcastChannel Sync (Main Controller <-> 2nd Screen VJ Window)
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel('circuitbend_vj_sync');
+    vjChannelRef.current = channel;
+
+    if (isVjProjectionMode) {
+      // If opened from main window, try direct 60fps Canvas MediaStream first (zero latency, works with all sources)
+      try {
+        const openerCanvas = (window.opener as any)?.__circuitBendCanvas as HTMLCanvasElement | undefined;
+        if (openerCanvas && typeof openerCanvas.captureStream === 'function' && videoRef.current) {
+          const directStream = openerCanvas.captureStream(60);
+          videoRef.current.muted = true;
+          videoRef.current.srcObject = directStream;
+          videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      } catch {}
+
+      channel.onmessage = (ev) => {
+        const msg = ev.data;
+        if (!msg || msg.type !== 'VJ_STATE') return;
+        if (msg.videoParams) setModulatedVideoParams(msg.videoParams);
+        if (typeof msg.isTapeFreeze === 'boolean') setIsTapeFreeze(msg.isTapeFreeze);
+        if (typeof msg.showVcrOsd === 'boolean') setShowVcrOsd(msg.showVcrOsd);
+        if (typeof msg.bpm === 'number') setBpm(msg.bpm);
+        if (typeof msg.bassEnergy === 'number') setExternalBassEnergy(msg.bassEnergy);
+        if (msg.title) setLocalMediaTitle(msg.title);
+
+        const v = videoRef.current;
+        // Only fall back to URL stream if not already receiving direct opener Canvas stream
+        if (v && !v.srcObject && msg.streamUrl && !msg.streamUrl.startsWith('blob:')) {
+          const currentUrl = v.getAttribute('data-vj-src') || '';
+          if (currentUrl !== msg.streamUrl) {
+            v.setAttribute('data-vj-src', msg.streamUrl);
+            v.src = msg.streamUrl;
+            v.muted = true;
+            v.load();
+            v.play().then(() => setIsPlaying(true)).catch(() => {});
+          } else {
+            if (typeof msg.playbackRate === 'number' && Math.abs(v.playbackRate - msg.playbackRate) > 0.02) {
+              v.playbackRate = msg.playbackRate;
+            }
+            if (typeof msg.currentTime === 'number' && Math.abs(v.currentTime - msg.currentTime) > 1.2) {
+              v.currentTime = msg.currentTime;
+            }
+            if (msg.isPlaying && v.paused) {
+              v.play().catch(() => {});
+              setIsPlaying(true);
+            } else if (!msg.isPlaying && !v.paused) {
+              v.pause();
+              setIsPlaying(false);
+            }
+          }
+        }
+      };
+
+      // Ask main window for immediate state snapshot on mount
+      channel.postMessage({ type: 'VJ_HELLO' });
+    } else {
+      channel.onmessage = (ev) => {
+        if (ev.data?.type === 'VJ_HELLO') {
+          const v = videoRef.current;
+          const bassEnergy = audioEngineRef.current ? audioEngineRef.current.getBassEnergy() : 0;
+          channel.postMessage({
+            type: 'VJ_STATE',
+            videoParams: modulatedVideoParams,
+            isPlaying,
+            isTapeFreeze,
+            showVcrOsd,
+            bpm,
+            bassEnergy,
+            title: localMediaTitle || playlist[currentIndex]?.title || 'CIRCUIT//BEND VJ OUT',
+            streamUrl: v?.currentSrc || playlist[currentIndex]?.streamUrl || '',
+            currentTime: v?.currentTime || 0,
+            playbackRate: v?.playbackRate || 1.0
+          });
+        }
+      };
+    }
+
+    return () => {
+      channel.close();
+      vjChannelRef.current = null;
+    };
+  }, [isVjProjectionMode]);
+
+  // Broadcast live 30Hz state to VJ 2nd screen only when using external BroadcastChannel mode (not direct canvas blit)
+  useEffect(() => {
+    if (isVjProjectionMode || !vjChannelRef.current || (window as any).__vjMirrorCtx) return;
+    const v = videoRef.current;
+    const bassEnergy = audioEngineRef.current ? audioEngineRef.current.getBassEnergy() : 0;
+    vjChannelRef.current.postMessage({
+      type: 'VJ_STATE',
+      videoParams: modulatedVideoParams,
+      isPlaying,
+      isTapeFreeze,
+      showVcrOsd,
+      bpm,
+      bassEnergy,
+      title: localMediaTitle || playlist[currentIndex]?.title || 'CIRCUIT//BEND VJ OUT',
+      streamUrl: v?.currentSrc || playlist[currentIndex]?.streamUrl || '',
+      currentTime: v?.currentTime || 0,
+      playbackRate: v?.playbackRate || 1.0
+    });
+  }, [
+    isVjProjectionMode,
+    modulatedVideoParams,
+    isPlaying,
+    isTapeFreeze,
+    showVcrOsd,
+    bpm,
+    localMediaTitle,
+    playlist,
+    currentIndex
+  ]);
+
+  // Open or Focus 2nd Screen VJ Window (Zero-Encoding Direct GPU Canvas Blit)
+  const handleOpenVjWindow = useCallback(() => {
+    if (vjWindowRef.current && !vjWindowRef.current.closed) {
+      vjWindowRef.current.focus();
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      showToast('⚠️ CANVAS NON PRÊT', 'Patientez une seconde que le moteur 3D démarre');
+      return;
+    }
+
+    (window as any).__circuitBendCanvas = canvas;
+
+    const win = window.open(
+      '',
+      'CircuitBendVJOut',
+      'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no'
+    );
+
+    if (!win) {
+      showToast('⚠️ POPUP BLOQUÉE', 'Autorisez l’ouverture de fenêtre pour le mode VJ Dual-Screen');
+      return;
+    }
+
+    vjWindowRef.current = win;
+    setIsVjWindowOpen(true);
+
+    // Inject lightweight, zero-encoding hardware Canvas receiver into 2nd window
+    win.document.open();
+    win.document.write(`<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>CIRCUIT // BEND — VJ 2ND SCREEN OUTPUT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      overflow: hidden;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      user-select: none;
+    }
+    canvas {
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      display: block;
+      background: #000;
+      transform-origin: center center;
+      transition: transform 0.18s ease;
+    }
+    #hud {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      z-index: 50;
+    }
+    body:hover #hud {
+      opacity: 1;
+    }
+    button {
+      background: rgba(15, 15, 20, 0.88);
+      color: #e9d5ff;
+      border: 1px solid #a855f7;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+    }
+    button:hover {
+      background: #9333ea;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="vj-canvas" width="854" height="480"></canvas>
+  <div id="hud">
+    <button id="fs-btn">⛶ PLEIN ÉCRAN (OU DOUBLE-CLIC)</button>
+    <button id="fit-btn">CADRAGE : CONTAIN (16:9)</button>
+  </div>
+  <script>
+    const c = document.getElementById('vj-canvas');
+    const ctx = c.getContext('2d', { alpha: false });
+    const fsBtn = document.getElementById('fs-btn');
+    const fitBtn = document.getElementById('fit-btn');
+    let mode = 0; // 0 = CONTAIN 16:9, 1 = COVER (Zoom Sans Bordures CRT), 2 = STRETCH (Plein Écran Étiré)
+    function toggleFs() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+    fsBtn.addEventListener('click', toggleFs);
+    document.body.addEventListener('dblclick', toggleFs);
+    fitBtn.addEventListener('click', () => {
+      mode = (mode + 1) % 3;
+      if (mode === 0) {
+        c.style.objectFit = 'contain';
+        c.style.transform = 'scale(1)';
+        fitBtn.textContent = 'CADRAGE : CONTAIN (16:9)';
+      } else if (mode === 1) {
+        c.style.objectFit = 'cover';
+        c.style.transform = 'scale(1.12)';
+        fitBtn.textContent = 'CADRAGE : COVER (SANS BORDURES CRT)';
+      } else {
+        c.style.objectFit = 'fill';
+        c.style.transform = 'scale(1.03)';
+        fitBtn.textContent = 'CADRAGE : STRETCH (PLEIN ÉCRAN 100%)';
+      }
+    });
+
+    // Fullscreen Anti-Occlusion Pump: if main window is hidden behind fullscreen, 2nd window drives the WebGL frame!
+    let tick = 0;
+    function vjLoop(now) {
+      try {
+        if (window.opener && !window.opener.closed) {
+          const lastMain = window.opener.__lastMainFrameTime || 0;
+          if (now - lastMain > 28 && typeof window.opener.__stepCircuitFrame === 'function') {
+            tick = (tick + 1) % 2;
+            if (tick === 0) {
+              if (typeof window.opener.__stepModulation === 'function') {
+                window.opener.__stepModulation();
+              }
+              window.opener.__stepCircuitFrame(now / 1000);
+              if (typeof window.opener.__blitToVjCanvas === 'function') {
+                window.opener.__blitToVjCanvas();
+              } else if (window.opener.__circuitBendCanvas && ctx) {
+                ctx.drawImage(window.opener.__circuitBendCanvas, 0, 0, 854, 480);
+              }
+            }
+          }
+        }
+      } catch (e) {}
+      requestAnimationFrame(vjLoop);
+    }
+    requestAnimationFrame(vjLoop);
+  </script>
+</body>
+</html>`);
+    win.document.close();
+
+    try {
+      const vjCanvas = win.document.getElementById('vj-canvas') as HTMLCanvasElement | null;
+      if (vjCanvas) {
+        (window as any).__vjMirrorCtx = vjCanvas.getContext('2d', {
+          alpha: false
+        });
+      }
+    } catch (err) {
+      console.error('[VJ 2nd Screen Context Error]:', err);
+    }
+
+    showToast(
+      '🖥️ SORTIE VJ 2ÈME ÉCRAN ACTIVE (GPU DIRECT)',
+      'Copie GPU directe sans encodage vidéo • Double-cliquez dans la 2ème fenêtre pour le plein écran'
+    );
+
+    const checkClosed = setInterval(() => {
+      if (!vjWindowRef.current || vjWindowRef.current.closed) {
+        clearInterval(checkClosed);
+        (window as any).__vjMirrorCtx = null;
+        setIsVjWindowOpen(false);
+        vjWindowRef.current = null;
+      }
+    }, 1000);
   }, [showToast]);
 
   // Share Patch via URL (`?patch=...`)
@@ -752,32 +1146,51 @@ export const App: React.FC = () => {
     }
   }, [videoParams, audioParams, lfoConfig, modRoutings, showToast]);
 
-  // Stop any active Webcam / Screen MediaStream
+  // Stop any active Webcam / Screen / System Audio MediaStream
   const stopLiveMediaStream = useCallback(() => {
+    if (audioEngineRef.current) {
+      audioEngineRef.current.connectLiveStream(null);
+    }
     if (liveMediaStreamRef.current) {
       liveMediaStreamRef.current.getTracks().forEach((t) => t.stop());
       liveMediaStreamRef.current = null;
     }
-    if (videoRef.current && videoRef.current.srcObject) {
-      videoRef.current.srcObject = null;
+    if (videoRef.current) {
+      if (videoRef.current.srcObject) {
+        videoRef.current.srcObject = null;
+      }
+      videoRef.current.muted = false;
     }
   }, []);
 
-  // Switch Live Input Source (YouTube / Webcam / Screen / Local File)
+  // Switch Live Input Source (YouTube / Webcam / Screen+Audio / System Audio In / Local File)
   const handleSelectLiveSource = useCallback(async (source: LiveInputSource) => {
     if (!videoRef.current) return;
 
     if (source === 'webcam') {
       try {
         stopLiveMediaStream();
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
         liveMediaStreamRef.current = stream;
+        videoRef.current.muted = true; // Prevent raw dry feedback loop; audio goes through AudioCircuitEngine
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        if (stream.getAudioTracks().length > 0 && audioEngineRef.current) {
+          audioEngineRef.current.connectLiveStream(stream, videoRef.current);
+          setAudioState(audioEngineRef.current.getContextState());
+        }
         setLiveSource('webcam');
         setIsPlaying(true);
         setLocalMediaTitle('LIVE WEBCAM FEED');
-        showToast('📷 WEBCAM ACTIVE', 'Flux caméra routé dans les shaders VHS/CRT');
+        showToast('📷 WEBCAM + AUDIO ACTIFS', 'Flux caméra et micro routés dans les shaders & le DSP');
       } catch (err: any) {
         showToast('⚠️ ACCÈS WEBCAM REFUSÉ', err?.message || 'Vérifiez les permissions caméra');
       }
@@ -786,15 +1199,30 @@ export const App: React.FC = () => {
         stopLiveMediaStream();
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         liveMediaStreamRef.current = stream;
+        videoRef.current.muted = true; // Prevent double dry audio; routed into AudioCircuitEngine DSP
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        const hasAudio =
+          stream.getAudioTracks().length > 0 &&
+          audioEngineRef.current?.connectLiveStream(stream, videoRef.current);
+        if (audioEngineRef.current) {
+          setAudioState(audioEngineRef.current.getContextState());
+        }
         setLiveSource('screen');
         setIsPlaying(true);
-        setLocalMediaTitle('LIVE SCREEN CAPTURE');
-        showToast('🖥️ CAPTURE D’ÉCRAN ACTIVE', 'Flux écran routé dans le moteur Glitch');
+        setLocalMediaTitle(hasAudio ? 'SCREEN + PC SYSTEM AUDIO DSP' : 'LIVE SCREEN CAPTURE');
+        showToast(
+          hasAudio ? '🖥️ ÉCRAN + SON PC ROUTÉS DANS LE DSP' : '🖥️ CAPTURE D’ÉCRAN ACTIVE',
+          hasAudio
+            ? 'Le son du PC passe dans le Tape Speed, Wow/Flutter, Reverb & Bitcrush !'
+            : 'Astuce : Cochez "Partager l’audio du système" pour bender le son du PC'
+        );
       } catch (err: any) {
         showToast('⚠️ CAPTURE ANNULÉE', err?.message || 'Partage d’écran interrompu');
       }
+    } else if (source === 'systemAudio') {
+      // Open the interactive Audio Input Bridge Modal (System Loopback vs Soundcard/Mic)
+      setIsAudioInputModalOpen(true);
     } else if (source === 'youtube') {
       stopLiveMediaStream();
       setLiveSource('youtube');
@@ -805,6 +1233,130 @@ export const App: React.FC = () => {
     }
   }, [currentIndex, playlist, showToast, stopLiveMediaStream]);
 
+  // Helper: Activate Audio-Reactive VJ Visuals (bumps AudioReactive & links ENV AUDIO -> Glitch/RGB Shift)
+  const activateAudioReactiveVisuals = useCallback(() => {
+    setVideoParams((prev) => ({
+      ...prev,
+      audioReactive: Math.max(prev.audioReactive || 0, 0.78)
+    }));
+    setLfoConfig((prev) => ({ ...prev, enabled: true }));
+    setModRoutings((prev) => {
+      const hasEnvAudio = prev.some((r) => r.source === 'envAudio');
+      if (hasEnvAudio) return prev;
+      return [
+        ...prev,
+        {
+          id: `envAudio-rgbShift-${Date.now()}`,
+          source: 'envAudio',
+          target: 'video.rgbShift',
+          amount: 0.65,
+          bipolar: false
+        },
+        {
+          id: `envAudio-glitchIntensity-${Date.now() + 1}`,
+          source: 'envAudio',
+          target: 'video.glitchIntensity',
+          amount: 0.45,
+          bipolar: false
+        }
+      ];
+    });
+  }, []);
+
+  // 1. Connect PC System Audio Loopback (Silent Audio-Reactive Visualizer Mode for Spotify / DJ Apps)
+  const handleConnectSystemLoopback = useCallback(
+    async (keepCurrentVisual: boolean) => {
+      if (!videoRef.current) return;
+      stopLiveMediaStream();
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        },
+        systemAudio: 'include'
+      } as any);
+
+      if (stream.getAudioTracks().length === 0) {
+        stream.getTracks().forEach((t) => t.stop());
+        throw new Error(
+          'Aucune piste audio détectée ! Cochez bien la case "Partager l’audio du système" (ou de l’onglet) en bas de la fenêtre.'
+        );
+      }
+
+      // Mute the video element 100% so only Spotify / PC audio is heard in your headphones
+      videoRef.current.muted = true;
+
+      if (keepCurrentVisual) {
+        // Stop the screen video track so the current CRT visual stays on screen while Spotify drives the shaders!
+        stream.getVideoTracks().forEach((t) => t.stop());
+        if (videoRef.current.paused) {
+          videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      } else {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setIsPlaying(true);
+      }
+
+      liveMediaStreamRef.current = stream;
+      handleEnsureAudioWired();
+      audioEngineRef.current?.connectLiveStream(stream, videoRef.current);
+      if (audioEngineRef.current) {
+        setAudioState(audioEngineRef.current.getContextState());
+      }
+      activateAudioReactiveVisuals();
+      setLiveSource('systemAudio');
+      setLocalMediaTitle('SPOTIFY / PC AUDIO VISUALIZER (MUET)');
+      showToast(
+        '🎵 MODE VISUALISEUR SPOTIFY / VJ ACTIF',
+        'Vidéo 100% muette • La télé CRT et ENV AUDIO pulsent sur les basses de Spotify !'
+      );
+    },
+    [activateAudioReactiveVisuals, handleEnsureAudioWired, showToast, stopLiveMediaStream]
+  );
+
+  // 2. Connect External Soundcard / Line-In / Microphone (Silent Audio-Reactive Visualizer Mode)
+  const handleConnectMicOrLineIn = useCallback(
+    async (deviceId?: string) => {
+      if (!videoRef.current) return;
+      stopLiveMediaStream();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        },
+        video: false
+      });
+
+      // Mute the video element 100% so there is zero audio clash or feedback
+      videoRef.current.muted = true;
+      if (videoRef.current.paused) {
+        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      }
+
+      liveMediaStreamRef.current = stream;
+      handleEnsureAudioWired();
+      audioEngineRef.current?.connectLiveStream(stream, videoRef.current);
+      if (audioEngineRef.current) {
+        setAudioState(audioEngineRef.current.getContextState());
+      }
+      activateAudioReactiveVisuals();
+      setLiveSource('systemAudio');
+      setLocalMediaTitle('VISUALISEUR AUDIO EXTERNE (MUET)');
+      showToast(
+        '🎵 VISUALISEUR AUDIO EXTERNE ACTIF',
+        'Vidéo 100% muette • Les shaders CRT et ENV AUDIO réagissent au rythme en direct'
+      );
+    },
+    [activateAudioReactiveVisuals, handleEnsureAudioWired, showToast, stopLiveMediaStream]
+  );
+
   // Load Dropped or Selected Local File (Video / Audio / Preset JSON)
   const handleLoadLocalFile = useCallback((file: File) => {
     if (file.name.toLowerCase().endsWith('.json')) {
@@ -812,7 +1364,7 @@ export const App: React.FC = () => {
       reader.onload = () => {
         if (typeof reader.result === 'string') {
           handleImportPresetJson(reader.result);
-          showToast(`📂 PRESET IMPORTÉ : ${file.name}`, 'Patch JSON appliqué par Drag & Drop');
+          showToast(`📂 PRESET IMPORTÉ : ${file.name}`, 'Patch JSON appliqué et sauvegardé sur disque');
         }
       };
       reader.readAsText(file);
@@ -824,6 +1376,8 @@ export const App: React.FC = () => {
     const blobUrl = URL.createObjectURL(file);
     setLiveSource('local');
     setLocalMediaTitle(file.name);
+    setLoopStart(null);
+    setLoopEnd(null);
     videoRef.current.src = blobUrl;
     videoRef.current.loop = true;
     videoRef.current.load();
@@ -835,6 +1389,80 @@ export const App: React.FC = () => {
       console.warn('[Local File Playback Warning]:', err);
     });
   }, [handleEnsureAudioWired, showToast, stopLiveMediaStream]);
+
+  // Prefetch a single track or upcoming tracks into local disk cache (`data/cache/`)
+  const handlePrefetchTrack = useCallback((trackId: string) => {
+    if (!trackId || trackId.startsWith('local-')) return;
+    fetch('/api/cache/prefetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: trackId })
+    })
+      .then(() => {
+        refreshCacheStatus();
+        showToast('⬇ MISE EN CACHE DISQUE LANCÉE', 'Téléchargement 1080p en arrière-plan pour Seek instantané');
+      })
+      .catch(() => {});
+  }, [refreshCacheStatus, showToast]);
+
+  const handlePrefetchAll = useCallback(() => {
+    const idsToCache = playlist
+      .filter((item) => !item.isLocal && !cachedIds.includes(item.id))
+      .slice(0, 5)
+      .map((item) => item.id);
+    if (idsToCache.length === 0) {
+      showToast('✅ DÉJÀ EN CACHE', 'Les pistes sont déjà présentes sur le disque local');
+      return;
+    }
+    fetch('/api/cache/prefetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: idsToCache })
+    })
+      .then(() => {
+        refreshCacheStatus();
+        showToast(`⬇ PRÉ-CACHE LANCÉ (${idsToCache.length} PISTES)`, 'Téléchargement en tâche de fond vers data/cache/');
+      })
+      .catch(() => {});
+  }, [cachedIds, playlist, refreshCacheStatus, showToast]);
+
+  const handleClearCache = useCallback(() => {
+    fetch('/api/cache', { method: 'DELETE' })
+      .then(() => {
+        refreshCacheStatus();
+        showToast('🗑️ CACHE DISQUE VIDÉ', 'Les fichiers temporaires YouTube ont été supprimés');
+      })
+      .catch(() => {});
+  }, [refreshCacheStatus, showToast]);
+
+  // Add items from Built-in YouTube Search or PC Folder Scanner
+  const handleAddItems = useCallback(
+    (newItemsInput: PlaylistItem[], playFirst: boolean = false) => {
+      if (!newItemsInput || newItemsInput.length === 0) return;
+
+      setPlaylist((prev) => {
+        const existingIds = new Set(prev.map((i) => i.id));
+        const filtered = newItemsInput.filter((i) => !existingIds.has(i.id));
+        const merged = [...prev, ...filtered];
+        persistPlaylistToDisk(playlistTitle, merged);
+
+        if (playFirst) {
+          const targetId = newItemsInput[0].id;
+          const targetIdx = merged.findIndex((i) => i.id === targetId);
+          setTimeout(() => loadTrackAtIndex(targetIdx >= 0 ? targetIdx : 0, merged), 50);
+        } else if (prev.length === 0 && merged.length > 0) {
+          setTimeout(() => loadTrackAtIndex(0, merged), 50);
+        } else {
+          showToast(
+            '➕ AJOUTÉ À LA FILE',
+            filtered.length === 1 ? filtered[0].title : `${filtered.length} médias ajoutés`
+          );
+        }
+        return merged;
+      });
+    },
+    [persistPlaylistToDisk, playlistTitle, showToast]
+  );
 
   // Load & Append YouTube Video / Playlist to current queue
   const appendPlaylistUrl = async (url: string) => {
@@ -858,9 +1486,14 @@ export const App: React.FC = () => {
         throw new Error('Aucun flux média exploitable trouvé pour ce lien.');
       }
 
+      const nextTitle = data.playlistTitle || playlistTitle;
+      if (data.playlistTitle) {
+        setPlaylistTitle(data.playlistTitle);
+      }
+
       setPlaylist((prev) => {
         const wasEmpty = prev.length === 0;
-        const existingIds = new Set(prev.map(i => i.id));
+        const existingIds = new Set(prev.map((i) => i.id));
         const newItems = data.items.filter((i: PlaylistItem) => !existingIds.has(i.id));
 
         if (newItems.length === 0) {
@@ -869,21 +1502,16 @@ export const App: React.FC = () => {
         }
 
         const merged = [...prev, ...newItems];
+        persistPlaylistToDisk(nextTitle, merged);
 
         if (wasEmpty) {
-          // Only auto-start playback if the playlist was completely empty
           setTimeout(() => loadTrackAtIndex(0, merged), 50);
         } else {
-          // Keep current track playing without interruption
           const addedTitle = newItems.length === 1 ? newItems[0].title : `${newItems.length} titres ajoutés`;
           showToast('➕ AJOUTÉ À LA FILE', addedTitle);
         }
         return merged;
       });
-
-      if (data.playlistTitle) {
-        setPlaylistTitle(data.playlistTitle);
-      }
     } catch (err: any) {
       console.error('[Playlist Load Error]:', err);
       setError(err.message || 'Erreur lors du chargement de la vidéo.');
@@ -896,9 +1524,11 @@ export const App: React.FC = () => {
   const loadTrackAtIndex = (index: number, list = playlist) => {
     if (!list[index] || !videoRef.current) return;
     stopLiveMediaStream();
-    setLiveSource('youtube');
-    setLocalMediaTitle(null);
+    setLiveSource(list[index].isLocal ? 'local' : 'youtube');
+    setLocalMediaTitle(list[index].isLocal ? list[index].title : null);
     setCurrentIndex(index);
+    setLoopStart(null);
+    setLoopEnd(null);
     const track = list[index];
 
     if (track?.duration && track.duration > 0) {
@@ -948,14 +1578,46 @@ export const App: React.FC = () => {
   };
 
   const handleRemoveTrack = (index: number) => {
-    setPlaylist(prev => {
+    setPlaylist((prev) => {
       const next = prev.filter((_, i) => i !== index);
+      persistPlaylistToDisk(playlistTitle, next);
       if (currentIndex >= next.length) {
         setCurrentIndex(Math.max(0, next.length - 1));
       }
       return next;
     });
   };
+
+  // A/B Loop Handlers
+  const handleSetLoopStart = useCallback(() => {
+    if (!videoRef.current) return;
+    const t = Number(videoRef.current.currentTime.toFixed(2));
+    setLoopStart(t);
+    if (loopEnd !== null && loopEnd <= t) {
+      setLoopEnd(null);
+    }
+    showToast(`🔁 BOUCLE A (IN) : ${t.toFixed(1)}s`, 'Appuyez sur O ou [B OUT] pour fermer la boucle');
+  }, [loopEnd, showToast]);
+
+  const handleSetLoopEnd = useCallback(() => {
+    if (!videoRef.current) return;
+    const t = Number(videoRef.current.currentTime.toFixed(2));
+    if (loopStart === null || t <= loopStart + 0.2) {
+      const start = Math.max(0, Number((t - 2.0).toFixed(2)));
+      setLoopStart(start);
+      setLoopEnd(t);
+      showToast(`🔁 BOUCLE A/B ACTIVE : ${start.toFixed(1)}s → ${t.toFixed(1)}s`, 'Lecture en boucle continue');
+    } else {
+      setLoopEnd(t);
+      showToast(`🔁 BOUCLE A/B ACTIVE : ${loopStart.toFixed(1)}s → ${t.toFixed(1)}s`, 'Lecture en boucle continue');
+    }
+  }, [loopStart, showToast]);
+
+  const handleClearLoop = useCallback(() => {
+    setLoopStart(null);
+    setLoopEnd(null);
+    showToast('🔁 BOUCLE A/B DÉSACTIVÉE', 'Retour à la lecture linéaire');
+  }, [showToast]);
 
   const handleToggleTapeFreeze = () => {
     if (!audioEngineRef.current) return;
@@ -977,9 +1639,11 @@ export const App: React.FC = () => {
     }
   };
 
-  // Direct Session Video Recorder
+  // Direct Session Video Recorder (Hardware Cropped 16:9 2D Proxy Canvas -> Zero WebGL Stall)
   const handleToggleRecord = () => {
     if (isRecording) {
+      (window as any).__recMirrorCtx = null;
+      (window as any).__recVideoTrack = null;
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
@@ -994,8 +1658,26 @@ export const App: React.FC = () => {
         return;
       }
       try {
-        // Lock captureStream to 30 FPS so offscreen Datamosh passes don't trigger double GPU readbacks
-        const videoStream = canvasRef.current.captureStream(30);
+        // Create offscreen 854x480 16:9 NTSC VHS proxy canvas (shares blit with 2nd screen -> 5x fewer pixels, zero WebGL stall)
+        const recCanvas = document.createElement('canvas');
+        recCanvas.width = 854;
+        recCanvas.height = 480;
+        const recCtx = recCanvas.getContext('2d', { alpha: false });
+        (window as any).__recMirrorCtx = recCtx;
+
+        // Use manual frame capture (captureStream(0)) so frames are only grabbed right after WebGL render completes
+        const videoStream =
+          typeof (recCanvas as any).captureStream === 'function'
+            ? recCanvas.captureStream(0)
+            : canvasRef.current.captureStream(30);
+        const [videoTrack] = videoStream.getVideoTracks();
+        (window as any).__recVideoTrack = videoTrack || null;
+
+        // Seed initial frame immediately
+        if (typeof (window as any).__blitToVjCanvas === 'function') {
+          (window as any).__blitToVjCanvas();
+        }
+
         const audioDest = audioEngineRef.current ? audioEngineRef.current.getMediaStreamDestination() : null;
         const tracks = [
           ...videoStream.getVideoTracks(),
@@ -1003,15 +1685,13 @@ export const App: React.FC = () => {
         ];
         const combinedStream = new MediaStream(tracks);
 
-        // Prioritize hardware-accelerated H.264 & fast VP8 over CPU-heavy software VP9
         const candidateMimeTypes = [
+          'video/webm;codecs=vp8,opus',
           'video/webm;codecs=h264,opus',
           'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
           'video/mp4;codecs=avc1,mp4a.40.2',
           'video/mp4;codecs=avc1',
           'video/mp4',
-          'video/webm;codecs=vp8,opus',
-          'video/webm;codecs=vp9,opus',
           'video/webm'
         ];
         let mimeType = 'video/webm';
@@ -1026,7 +1706,7 @@ export const App: React.FC = () => {
 
         const recorder = new MediaRecorder(combinedStream, {
           mimeType,
-          videoBitsPerSecond: 4_500_000,
+          videoBitsPerSecond: 3_500_000,
           audioBitsPerSecond: 192_000
         });
         recordedChunksRef.current = [];
@@ -1038,16 +1718,20 @@ export const App: React.FC = () => {
         };
 
         recorder.onstop = async () => {
-          // Release canvas capture track immediately so GPU readback stops
+          (window as any).__recMirrorCtx = null;
+          (window as any).__recVideoTrack = null;
           videoStream.getVideoTracks().forEach((t) => t.stop());
           const rawBlob = new Blob(recordedChunksRef.current, { type: mimeType });
 
-          const triggerDownload = (blob: Blob) => {
+          const triggerDownload = (blob: Blob, savedPath?: string | null) => {
+            const d = new Date();
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            const dtStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}h${pad(d.getMinutes())}m${pad(d.getSeconds())}s`;
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = `circuitbend-clip-${Date.now()}.mp4`;
+            a.download = `circuitbend-video_${dtStr}.mp4`;
             document.body.appendChild(a);
             a.click();
             setTimeout(() => {
@@ -1055,34 +1739,32 @@ export const App: React.FC = () => {
               URL.revokeObjectURL(url);
             }, 300);
 
-            showToast('💾 CLIP MP4 TÉLÉCHARGÉ', 'Enregistrement 60 FPS sauvegardé avec succès');
+            showToast(
+              '💾 CLIP MP4 EXPORTÉ SUR DISQUE',
+              savedPath ? `Sauvegardé dans ${savedPath}` : 'Enregistrement 60 FPS sauvegardé avec succès'
+            );
           };
 
           try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-
             const res = await fetch('/api/convert-mp4', {
               method: 'POST',
               headers: { 'Content-Type': 'application/octet-stream' },
-              body: rawBlob,
-              signal: controller.signal
+              body: rawBlob
             });
-            clearTimeout(timeoutId);
 
             if (res.ok) {
+              const savedPath = res.headers.get('X-Export-Path');
               const mp4Blob = await res.blob();
-              triggerDownload(mp4Blob);
+              triggerDownload(mp4Blob, savedPath);
               return;
             }
           } catch (e) {
-            console.warn('[MP4 Background Conversion - fallback to direct download]:', e);
+            console.warn('[MP4 Conversion fallback]:', e);
           }
 
           triggerDownload(rawBlob);
         };
 
-        // Flush encoded chunks every 1000ms to prevent RAM buffer stalls
         recorder.start(1000);
         mediaRecorderRef.current = recorder;
         setIsRecording(true);
@@ -1094,6 +1776,91 @@ export const App: React.FC = () => {
       } catch (err) {
         console.error('[Recording Error]:', err);
         alert('Impossible de démarrer l’enregistrement MediaStream.');
+      }
+    }
+  };
+
+  // Lossless 24-bit WAV Audio Stem Recorder (for Ableton / FL Studio / Logic)
+  const handleToggleRecordWav = () => {
+    if (isRecordingWav) {
+      if (wavRecorderRef.current && wavRecorderRef.current.state !== 'inactive') {
+        wavRecorderRef.current.stop();
+      }
+      if (wavTimerRef.current) {
+        clearInterval(wavTimerRef.current);
+        wavTimerRef.current = null;
+      }
+      setIsRecordingWav(false);
+    } else {
+      handleEnsureAudioWired();
+      const audioDest = audioEngineRef.current ? audioEngineRef.current.getMediaStreamDestination() : null;
+      if (!audioDest || audioDest.stream.getAudioTracks().length === 0) {
+        showToast('⚠️ AUDIO NON INITIALISÉ', 'Lancez la lecture avant d’enregistrer un stem WAV');
+        return;
+      }
+
+      try {
+        const audioOnlyStream = new MediaStream(audioDest.stream.getAudioTracks());
+        const recorder = new MediaRecorder(audioOnlyStream, {
+          audioBitsPerSecond: 320_000
+        });
+        wavChunksRef.current = [];
+
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            wavChunksRef.current.push(e.data);
+          }
+        };
+
+        recorder.onstop = async () => {
+          const rawAudioBlob = new Blob(wavChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+          try {
+            showToast('🎚️ ENCODAGE WAV 24-BIT EN COURS...', 'Conversion FFmpeg vers PCM 24-bit / 48kHz');
+            const res = await fetch('/api/export-wav', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/octet-stream' },
+              body: rawAudioBlob
+            });
+            if (res.ok) {
+              const d = new Date();
+              const pad = (n: number) => n.toString().padStart(2, '0');
+              const dtStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}h${pad(d.getMinutes())}m${pad(d.getSeconds())}s`;
+              const savedPath = res.headers.get('X-Export-Path');
+              const wavBlob = await res.blob();
+              const url = URL.createObjectURL(wavBlob);
+              const a = document.createElement('a');
+              a.style.display = 'none';
+              a.href = url;
+              a.download = `circuitbend-stem_${dtStr}.wav`;
+              document.body.appendChild(a);
+              a.click();
+              setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }, 300);
+              showToast(
+                '🎹 STEM .WAV 24-BIT EXPORTÉ',
+                savedPath ? `Sauvegardé dans ${savedPath}` : 'Prêt pour Ableton / FL Studio'
+              );
+              return;
+            }
+          } catch (err) {
+            console.warn('[WAV Export Error]:', err);
+          }
+          showToast('⚠️ ERREUR EXPORT WAV', 'Vérifiez que FFmpeg est disponible');
+        };
+
+        recorder.start(500);
+        wavRecorderRef.current = recorder;
+        setIsRecordingWav(true);
+        setWavRecordingDuration(0);
+
+        wavTimerRef.current = setInterval(() => {
+          setWavRecordingDuration((prev) => prev + 1);
+        }, 1000);
+        showToast('🎙️ ENREGISTREMENT STEM .WAV ACTIF', 'Tout le traitement Tape & DSP est capturé en 24-bit');
+      } catch (err) {
+        console.error('[WAV Recorder Error]:', err);
       }
     }
   };
@@ -1111,7 +1878,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // User Custom Presets Handlers
+  // User Custom Presets Handlers (Persisted on Local Disk + localStorage)
   const handleSaveUserPreset = (name: string) => {
     const trimmed = name.trim() || `Patch #${userPresets.length + 1}`;
     const newPreset: UserPreset = {
@@ -1125,22 +1892,15 @@ export const App: React.FC = () => {
     };
     const updated = [newPreset, ...userPresets];
     setUserPresets(updated);
-    try {
-      localStorage.setItem('ytb_circuitbend_user_presets', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
-    }
+    persistPresetsToDisk(updated);
     setActivePresetId(newPreset.id);
+    showToast(`💾 PRESET SAUVEGARDÉ : ${trimmed}`, 'Enregistré sur le disque local (data/presets.json)');
   };
 
   const handleDeleteUserPreset = (id: string) => {
     const updated = userPresets.filter((p) => p.id !== id);
     setUserPresets(updated);
-    try {
-      localStorage.setItem('ytb_circuitbend_user_presets', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
-    }
+    persistPresetsToDisk(updated);
     if (activePresetId === id) {
       setActivePresetId('clean');
     }
@@ -1176,11 +1936,7 @@ export const App: React.FC = () => {
         };
         const updated = [importedPreset, ...userPresets];
         setUserPresets(updated);
-        try {
-          localStorage.setItem('ytb_circuitbend_user_presets', JSON.stringify(updated));
-        } catch (e) {
-          console.error(e);
-        }
+        persistPresetsToDisk(updated);
         handleApplyUserPreset(importedPreset);
         return true;
       }
@@ -1201,10 +1957,11 @@ export const App: React.FC = () => {
       setSnapshotFlash(true);
       setTimeout(() => setSnapshotFlash(false), 220);
 
+      (window as any).__forceRenderWebGL?.();
       const dataUrl = canvas.toDataURL('image/png');
       const now = new Date();
       const pad = (n: number) => n.toString().padStart(2, '0');
-      const filename = `circuitbend-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`;
+      const filename = `circuitbend-photo_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}h${pad(now.getMinutes())}m${pad(now.getSeconds())}s.png`;
 
       const link = document.createElement('a');
       link.download = filename;
@@ -1376,6 +2133,12 @@ export const App: React.FC = () => {
       } else if (key === 'b') {
         e.preventDefault();
         handleTapTempo();
+      } else if (key === 'i') {
+        e.preventDefault();
+        handleSetLoopStart();
+      } else if (key === 'o') {
+        e.preventDefault();
+        handleSetLoopEnd();
       } else if (key === 'd' && !e.repeat) {
         e.preventDefault();
         setPunchInFx('datamosh');
@@ -1419,11 +2182,20 @@ export const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [handlePlayToggle, handleToggleTapeFreeze, handleRandomize, handleApplyPreset, handleTakeSnapshot, handleTapTempo, showToast]);
+  }, [
+    handlePlayToggle,
+    handleToggleTapeFreeze,
+    handleRandomize,
+    handleApplyPreset,
+    handleTakeSnapshot,
+    handleTapTempo,
+    handleSetLoopStart,
+    handleSetLoopEnd,
+    showToast
+  ]);
 
   // Global Window Drag & Drop for Local Media Files (.mp4, .webm, .mp3) & Presets (.json)
   const handleWindowDragOver = (e: React.DragEvent) => {
-    // Ignore internal Serum LFO or Preset drags
     if (
       e.dataTransfer.types.includes('application/x-circuitbend-mod') ||
       e.dataTransfer.types.includes('application/x-circuitbend-preset')
@@ -1458,12 +2230,24 @@ export const App: React.FC = () => {
 
   const currentTrack = playlist[currentIndex];
   const displayTitle = localMediaTitle || currentTrack?.title || 'STANDBY - FEED READY';
+  const isCurrentTrackCached = Boolean(
+    currentTrack && (currentTrack.isLocal || cachedIds.includes(currentTrack.id))
+  );
 
   return (
     <div
       onDragOver={handleWindowDragOver}
       onDragLeave={handleWindowDragLeave}
       onDrop={handleWindowDrop}
+      onDoubleClick={() => {
+        if (isVjProjectionMode) {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          } else {
+            document.exitFullscreen().catch(() => {});
+          }
+        }
+      }}
       className="h-screen w-screen overflow-hidden relative select-none bg-black text-neutral-300"
     >
       {/* Hidden Native Video Element for decoding frames */}
@@ -1479,6 +2263,18 @@ export const App: React.FC = () => {
         onTimeUpdate={() => {
           if (videoRef.current) {
             const t = videoRef.current.currentTime;
+            // Instant A/B Loop Jump when Loop In & Loop Out are active
+            if (
+              !isVjProjectionMode &&
+              loopStart !== null &&
+              loopEnd !== null &&
+              loopEnd > loopStart + 0.15 &&
+              t >= loopEnd
+            ) {
+              videoRef.current.currentTime = loopStart;
+              setCurrentTime(loopStart);
+              return;
+            }
             setCurrentTime((prev) => (Math.floor(t) !== Math.floor(prev) ? t : prev));
           }
         }}
@@ -1491,7 +2287,14 @@ export const App: React.FC = () => {
           }
         }}
         onEnded={() => {
-          if (liveSource === 'youtube') handleNextTrack();
+          if (!isVjProjectionMode && (liveSource === 'youtube' || liveSource === 'local')) {
+            if (loopStart !== null && videoRef.current) {
+              videoRef.current.currentTime = loopStart;
+              videoRef.current.play().catch(() => {});
+            } else {
+              handleNextTrack();
+            }
+          }
         }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -1504,16 +2307,26 @@ export const App: React.FC = () => {
         isPlaying={isPlaying}
         isTapeFreeze={isTapeFreeze}
         audioEngine={audioEngineRef.current}
-        showTimeline={showTimeline && (isRackMinimized || isZenMode)}
+        externalBassEnergy={externalBassEnergy}
+        isTrackCached={isCurrentTrackCached}
+        loopStart={loopStart}
+        loopEnd={loopEnd}
+        onSetLoopStart={!isVjProjectionMode ? handleSetLoopStart : undefined}
+        onSetLoopEnd={!isVjProjectionMode ? handleSetLoopEnd : undefined}
+        onClearLoop={!isVjProjectionMode ? handleClearLoop : undefined}
+        showTimeline={!isVjProjectionMode && showTimeline && (isRackMinimized || isZenMode)}
         showVcrOsd={showVcrOsd}
-        onToggleVcrOsd={() => setShowVcrOsd((prev) => !prev)}
+        onToggleVcrOsd={!isVjProjectionMode ? () => setShowVcrOsd((prev) => !prev) : undefined}
         liveSource={liveSource}
         bpm={bpm}
         onPlayToggle={handlePlayToggle}
         onNext={handleNextTrack}
         onPrev={handlePrevTrack}
         onToggleTapeFreeze={handleToggleTapeFreeze}
-        onCanvasReady={(c) => { canvasRef.current = c; }}
+        onCanvasReady={(c) => {
+          canvasRef.current = c;
+          (window as any).__circuitBendCanvas = c;
+        }}
         title={displayTitle}
         duration={duration}
         currentTime={currentTime}
@@ -1523,7 +2336,7 @@ export const App: React.FC = () => {
       />
 
       {/* FULLSCREEN FILE DRAG & DROP OVERLAY */}
-      {isFileDragOver && (
+      {!isVjProjectionMode && isFileDragOver && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md border-4 border-dashed border-cyan-400 flex flex-col items-center justify-center gap-3 pointer-events-none font-mono">
           <Upload size={48} className="text-cyan-400 animate-bounce" />
           <div className="text-lg font-bold text-cyan-300 tracking-wider">
@@ -1536,108 +2349,140 @@ export const App: React.FC = () => {
       )}
 
       {/* FLOATING MINIMAL HEADER (Top) */}
-      <div className={`absolute top-0 left-0 right-0 z-30 pointer-events-none transition-opacity duration-300 ${isZenMode ? 'opacity-0' : 'opacity-100'}`}>
-        <div className="pointer-events-auto">
-          <Header
-            audioContextState={audioState}
-            onInitAudio={handleEnsureAudioWired}
-            playlistCount={playlist.length}
-            isPlaylistOpen={isPlaylistOpen}
-            onTogglePlaylist={() => setIsPlaylistOpen(!isPlaylistOpen)}
-            liveSource={liveSource}
-            onSelectLiveSource={handleSelectLiveSource}
-            onLoadLocalFile={handleLoadLocalFile}
-            onShareUrl={handleSharePatchUrl}
-            shareUrlCopied={shareUrlCopied}
-          />
+      {!isVjProjectionMode && (
+        <div className={`absolute top-0 left-0 right-0 z-30 pointer-events-none transition-opacity duration-300 ${isZenMode ? 'opacity-0' : 'opacity-100'}`}>
+          <div className="pointer-events-auto">
+            <Header
+              audioContextState={audioState}
+              onInitAudio={handleEnsureAudioWired}
+              playlistCount={playlist.length}
+              isPlaylistOpen={isPlaylistOpen}
+              onTogglePlaylist={() => setIsPlaylistOpen(!isPlaylistOpen)}
+              liveSource={liveSource}
+              onSelectLiveSource={handleSelectLiveSource}
+              onLoadLocalFile={handleLoadLocalFile}
+              onShareUrl={handleSharePatchUrl}
+              shareUrlCopied={shareUrlCopied}
+              onOpenVjWindow={handleOpenVjWindow}
+              isVjWindowOpen={isVjWindowOpen}
+              cachedTrackCount={cachedIds.length}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* FLOATING BOTTOM DOCK: KNOBS, SERUM MATRIX, AUDIO VISUALIZER & MASTER */}
-      <div className={`transition-opacity duration-300 ${isZenMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-        <RackControls
-          videoParams={videoParams}
-          audioParams={audioParams}
-          modulatedVideoParams={modulatedVideoParams}
-          modulatedAudioParams={modulatedAudioParams}
-          activePresetId={activePresetId}
-          analyser={audioEngineRef.current ? audioEngineRef.current.getAnalyser() : null}
-          isTapeFreeze={isTapeFreeze}
-          isRecording={isRecording}
-          recordingDuration={recordingDuration}
-          midiConnected={midiConnected}
-          showTimeline={showTimeline}
-          isZenMode={isZenMode}
-          userPresets={userPresets}
-          lfoConfig={lfoConfig}
-          onUpdateLfo={(partial) => setLfoConfig((prev) => ({ ...prev, ...partial }))}
-          modRoutings={modRoutings}
-          onDropModSource={handleDropModSource}
-          onUpdateModAmount={handleUpdateModAmount}
-          onToggleModBipolar={handleToggleModBipolar}
-          onRemoveMod={handleRemoveMod}
-          onClearModRoutings={() => setModRoutings([])}
-          liveSourcesRef={liveSourcesRef}
-          macroXY={macroXY}
-          onChangeMacroXY={(x, y) => setMacroXY({ x, y })}
-          xyHold={xyHold}
-          onToggleXyHold={() => setXyHold((prev) => !prev)}
-          bpm={bpm}
-          onChangeBpm={syncLfoToBpm}
-          onTapTempo={handleTapTempo}
-          morphSlotA={morphSlotA}
-          morphSlotB={morphSlotB}
-          morphAmount={morphAmount}
-          onSelectMorphSlotA={setMorphSlotA}
-          onSelectMorphSlotB={setMorphSlotB}
-          onChangeMorphAmount={handleChangeMorphAmount}
-          onToggleTimeline={() => setShowTimeline((prev) => !prev)}
-          onMinimizedChange={setIsRackMinimized}
-          onToggleTapeFreeze={handleToggleTapeFreeze}
-          onToggleRecord={handleToggleRecord}
-          onToggleZen={() => setIsZenMode((prev) => !prev)}
-          onTakeSnapshot={handleTakeSnapshot}
-          onSavePreset={handleSaveUserPreset}
-          onDeleteUserPreset={handleDeleteUserPreset}
-          onApplyUserPreset={handleApplyUserPreset}
-          onImportPresetJson={handleImportPresetJson}
-          onUpdateVideo={(partial) => {
-            setActivePresetId('custom');
-            setVideoParams((prev) => ({ ...prev, ...partial }));
-          }}
-          onUpdateAudio={(partial) => {
-            setActivePresetId('custom');
-            setAudioParams((prev) => ({ ...prev, ...partial }));
-          }}
-          onApplyPreset={handleApplyPreset}
-          onRandomize={handleRandomize}
-          onOpenMidiModal={() => {
-            midiEngineRef.current?.connect();
-            setIsMidiModalOpen(true);
-          }}
-        />
-      </div>
+      {!isVjProjectionMode && (
+        <div className={`transition-opacity duration-300 ${isZenMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+          <RackControls
+            videoParams={videoParams}
+            audioParams={audioParams}
+            modulatedVideoParams={modulatedVideoParams}
+            modulatedAudioParams={modulatedAudioParams}
+            activePresetId={activePresetId}
+            analyser={audioEngineRef.current ? audioEngineRef.current.getAnalyser() : null}
+            isTapeFreeze={isTapeFreeze}
+            isRecording={isRecording}
+            recordingDuration={recordingDuration}
+            isRecordingWav={isRecordingWav}
+            wavRecordingDuration={wavRecordingDuration}
+            midiConnected={midiConnected}
+            showTimeline={showTimeline}
+            isZenMode={isZenMode}
+            userPresets={userPresets}
+            lfoConfig={lfoConfig}
+            onUpdateLfo={(partial) => setLfoConfig((prev) => ({ ...prev, ...partial }))}
+            modRoutings={modRoutings}
+            onDropModSource={handleDropModSource}
+            onUpdateModAmount={handleUpdateModAmount}
+            onToggleModBipolar={handleToggleModBipolar}
+            onRemoveMod={handleRemoveMod}
+            onClearModRoutings={() => setModRoutings([])}
+            liveSourcesRef={liveSourcesRef}
+            macroXY={macroXY}
+            onChangeMacroXY={(x, y) => setMacroXY({ x, y })}
+            xyHold={xyHold}
+            onToggleXyHold={() => setXyHold((prev) => !prev)}
+            bpm={bpm}
+            onChangeBpm={syncLfoToBpm}
+            onTapTempo={handleTapTempo}
+            morphSlotA={morphSlotA}
+            morphSlotB={morphSlotB}
+            morphAmount={morphAmount}
+            onSelectMorphSlotA={setMorphSlotA}
+            onSelectMorphSlotB={setMorphSlotB}
+            onChangeMorphAmount={handleChangeMorphAmount}
+            onToggleTimeline={() => setShowTimeline((prev) => !prev)}
+            onMinimizedChange={setIsRackMinimized}
+            onToggleTapeFreeze={handleToggleTapeFreeze}
+            onToggleRecord={handleToggleRecord}
+            onToggleRecordWav={handleToggleRecordWav}
+            onToggleZen={() => setIsZenMode((prev) => !prev)}
+            onTakeSnapshot={handleTakeSnapshot}
+            onSavePreset={handleSaveUserPreset}
+            onDeleteUserPreset={handleDeleteUserPreset}
+            onApplyUserPreset={handleApplyUserPreset}
+            onImportPresetJson={handleImportPresetJson}
+            onUpdateVideo={(partial) => {
+              setActivePresetId('custom');
+              setVideoParams((prev) => ({ ...prev, ...partial }));
+            }}
+            onUpdateAudio={(partial) => {
+              setActivePresetId('custom');
+              setAudioParams((prev) => ({ ...prev, ...partial }));
+            }}
+            onApplyPreset={handleApplyPreset}
+            onRandomize={handleRandomize}
+            onOpenMidiModal={() => {
+              midiEngineRef.current?.connect();
+              setIsMidiModalOpen(true);
+            }}
+          />
+        </div>
+      )}
 
       {/* Interactive Web MIDI Configurator Modal */}
-      <MidiModal
-        isOpen={isMidiModalOpen}
-        onClose={() => setIsMidiModalOpen(false)}
-        midiEngine={midiEngineRef.current}
-      />
+      {!isVjProjectionMode && (
+        <MidiModal
+          isOpen={isMidiModalOpen}
+          onClose={() => setIsMidiModalOpen(false)}
+          midiEngine={midiEngineRef.current}
+        />
+      )}
 
-      {/* FLOATING SIDE DRAWER: PLAYLIST QUEUE */}
-      <PlaylistPanel
-        isOpen={isPlaylistOpen}
-        onClose={() => setIsPlaylistOpen(false)}
-        items={playlist}
-        currentIndex={currentIndex}
-        playlistTitle={playlistTitle}
-        isLoading={isLoading}
-        error={error}
-        onSelectTrack={(idx) => loadTrackAtIndex(idx)}
-        onLoadUrl={(url) => appendPlaylistUrl(url)}
-        onRemoveTrack={handleRemoveTrack}
-      />
+      {/* Interactive Audio Input Bridge Modal (PC System Loopback vs Soundcard/Mic) */}
+      {!isVjProjectionMode && (
+        <AudioInputModal
+          isOpen={isAudioInputModalOpen}
+          onClose={() => setIsAudioInputModalOpen(false)}
+          onConnectSystemLoopback={handleConnectSystemLoopback}
+          onConnectMicOrLineIn={handleConnectMicOrLineIn}
+          activeMode={liveSource}
+        />
+      )}
+
+      {/* FLOATING SIDE DRAWER: PLAYLIST, YT SEARCH & LOCAL FOLDER SCANNER */}
+      {!isVjProjectionMode && (
+        <PlaylistPanel
+          isOpen={isPlaylistOpen}
+          onClose={() => setIsPlaylistOpen(false)}
+          items={playlist}
+          currentIndex={currentIndex}
+          playlistTitle={playlistTitle}
+          isLoading={isLoading}
+          error={error}
+          cachedIds={cachedIds}
+          activeDownloads={activeDownloads}
+          cacheSizeMb={cacheSizeMb}
+          onSelectTrack={(idx) => loadTrackAtIndex(idx)}
+          onLoadUrl={(url) => appendPlaylistUrl(url)}
+          onRemoveTrack={handleRemoveTrack}
+          onAddItems={handleAddItems}
+          onPrefetchTrack={handlePrefetchTrack}
+          onPrefetchAll={handlePrefetchAll}
+          onClearCache={handleClearCache}
+        />
+      )}
 
       {/* Zen Mode Floating Exit Button */}
       {isZenMode && (

@@ -72,5 +72,63 @@ describe('Server API Integration Tests', () => {
     const html = await res.text();
     assert.ok(html.includes('CIRCUIT//BEND'));
   });
+
+  it('GET /api/cache/status should return local disk cache info', async () => {
+    const res = await fetch(`${baseUrl}/api/cache/status`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json() as { cacheDir: string; cachedIds: string[]; fileCount: number };
+    assert.ok(typeof body.cacheDir === 'string');
+    assert.ok(Array.isArray(body.cachedIds));
+    assert.strictEqual(typeof body.fileCount, 'number');
+  });
+
+  it('POST & GET /api/library/presets should persist presets to local disk', async () => {
+    const samplePreset = [{ id: 'test-1', name: 'Desktop VHS Test', createdAt: 123 }];
+    const postRes = await fetch(`${baseUrl}/api/library/presets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presets: samplePreset })
+    });
+    assert.strictEqual(postRes.status, 200);
+
+    const getRes = await fetch(`${baseUrl}/api/library/presets`);
+    assert.strictEqual(getRes.status, 200);
+    const data = await getRes.json() as { presets: any[] };
+    assert.ok(Array.isArray(data.presets));
+    assert.strictEqual(data.presets[0].id, 'test-1');
+  });
+
+  it('POST /api/library/scan-folder should scan local studio media folder', async () => {
+    const res = await fetch(`${baseUrl}/api/library/scan-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    assert.strictEqual(res.status, 200);
+    const data = await res.json() as { folderPath: string; items: any[]; shortcuts: any[] };
+    assert.ok(typeof data.folderPath === 'string');
+    assert.ok(Array.isArray(data.items));
+    assert.ok(Array.isArray(data.shortcuts));
+  });
+
+  it('POST /api/yt-auth/browser should configure browser cookie extraction mode', async () => {
+    const res = await fetch(`${baseUrl}/api/yt-auth/browser`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ browser: 'firefox' })
+    });
+    assert.strictEqual(res.status, 200);
+    const data = await res.json() as { ok: boolean; status: { mode: string; browser: string } };
+    assert.strictEqual(data.ok, true);
+    assert.strictEqual(data.status.mode, 'browser');
+    assert.strictEqual(data.status.browser, 'firefox');
+
+    // Reset back to none
+    await fetch(`${baseUrl}/api/yt-auth/browser`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ browser: null })
+    });
+  });
 });
 

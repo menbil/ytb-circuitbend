@@ -49,6 +49,8 @@ interface RackControlsProps {
   isTapeFreeze?: boolean;
   isRecording?: boolean;
   recordingDuration?: number;
+  isRecordingWav?: boolean;
+  wavRecordingDuration?: number;
   midiConnected?: boolean;
   showTimeline?: boolean;
   isZenMode?: boolean;
@@ -82,6 +84,7 @@ interface RackControlsProps {
   onToggleFreeze?: () => void;
   onToggleTapeFreeze?: () => void;
   onToggleRecord?: () => void;
+  onToggleRecordWav?: () => void;
   onToggleZen?: () => void;
   onTakeSnapshot?: () => void;
   onSavePreset?: (name: string) => void;
@@ -108,6 +111,8 @@ export const RackControls: React.FC<RackControlsProps> = ({
   isTapeFreeze,
   isRecording = false,
   recordingDuration = 0,
+  isRecordingWav = false,
+  wavRecordingDuration = 0,
   midiConnected = false,
   showTimeline = true,
   isZenMode = false,
@@ -139,6 +144,7 @@ export const RackControls: React.FC<RackControlsProps> = ({
   onToggleFreeze,
   onToggleTapeFreeze,
   onToggleRecord,
+  onToggleRecordWav,
   onToggleZen,
   onTakeSnapshot,
   onSavePreset,
@@ -346,10 +352,25 @@ export const RackControls: React.FC<RackControlsProps> = ({
                   ? 'bg-rose-600 text-white border-rose-300 shadow-[0_0_12px_#ff0033] animate-pulse'
                   : 'bg-neutral-900/90 text-neutral-300 border-neutral-700/80 hover:bg-neutral-800 hover:text-white'
               }`}
-              title={isRecording ? 'Arrêter et exporter l’enregistrement vidéo' : 'Enregistrer la session en direct (MP4/WebM)'}
+              title={isRecording ? 'Arrêter et exporter l’enregistrement vidéo MP4 (data/exports)' : 'Enregistrer la session vidéo en MP4 60fps'}
             >
               <Circle size={8} fill={isRecording ? '#ffffff' : '#ef4444'} className={isRecording ? 'animate-ping' : ''} />
-              <span>{isRecording ? `REC ${Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:${(recordingDuration % 60).toString().padStart(2, '0')}` : 'REC'}</span>
+              <span>{isRecording ? `MP4 ${Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:${(recordingDuration % 60).toString().padStart(2, '0')}` : 'REC MP4'}</span>
+            </button>
+          )}
+
+          {onToggleRecordWav && (
+            <button
+              onClick={onToggleRecordWav}
+              className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold flex items-center gap-1 transition-all border ${
+                isRecordingWav
+                  ? 'bg-amber-500 text-black border-amber-200 shadow-[0_0_12px_#f59e0b] animate-pulse'
+                  : 'bg-neutral-900/90 text-amber-300 border-amber-800/80 hover:bg-neutral-800 hover:text-amber-200'
+              }`}
+              title={isRecordingWav ? 'Arrêter et exporter le stem audio en .WAV 24-bit sans perte (pour Ableton/FL Studio)' : 'Enregistrer uniquement le son Circuit-Bendé en .WAV 24-bit'}
+            >
+              <Circle size={8} fill={isRecordingWav ? '#000000' : '#f59e0b'} className={isRecordingWav ? 'animate-ping' : ''} />
+              <span>{isRecordingWav ? `WAV ${Math.floor(wavRecordingDuration / 60).toString().padStart(2, '0')}:${(wavRecordingDuration % 60).toString().padStart(2, '0')}` : 'REC WAV'}</span>
             </button>
           )}
 

@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { Play, Pause, Maximize2, SkipForward, SkipBack, Zap, Tv } from 'lucide-react';
+import { Play, Pause, Maximize2, SkipForward, SkipBack, Zap, Tv, Repeat, HardDrive } from 'lucide-react';
 import { VideoBendingParams, LiveInputSource } from '../types/index.js';
 import { CircuitBendShader, DatamoshShader } from '../shaders/circuitBendShader.js';
 import { AudioCircuitEngine } from '../audio/AudioCircuitEngine.js';
@@ -14,6 +14,13 @@ interface VideoViewportProps {
   isFreezeActive?: boolean;
   isTapeFreeze?: boolean;
   audioEngine?: AudioCircuitEngine | null;
+  externalBassEnergy?: number;
+  isTrackCached?: boolean;
+  loopStart?: number | null;
+  loopEnd?: number | null;
+  onSetLoopStart?: () => void;
+  onSetLoopEnd?: () => void;
+  onClearLoop?: () => void;
   showTimeline?: boolean;
   showVcrOsd?: boolean;
   onToggleVcrOsd?: () => void;
@@ -37,7 +44,8 @@ const CircuitScreen: React.FC<{
   params: VideoBendingParams;
   isFreezeActive?: boolean;
   audioEngine?: AudioCircuitEngine | null;
-}> = React.memo(({ videoElement, params, isFreezeActive = false, audioEngine }) => {
+  externalBassEnergy?: number;
+}> = React.memo(({ videoElement, params, isFreezeActive = false, audioEngine, externalBassEnergy = 0 }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const paramsRef = useRef(params);
   paramsRef.current = params;
@@ -121,69 +129,125 @@ const CircuitScreen: React.FC<{
   }
 
   useFrame((state) => {
-    const u = shaderMaterial.uniforms;
-    const p = paramsRef.current;
-    const moshAmt = Number.isFinite(p.datamosh ?? 0) ? (p.datamosh ?? 0) : 0;
+    const stepCircuitFrame = (elapsed: number) => {
+      const u = shaderMaterial.uniforms;
+      const p = paramsRef.current;
+      const moshAmt = Number.isFinite(p.datamosh ?? 0) ? (p.datamosh ?? 0) : 0;
 
-    const isVideoReady = Boolean(videoElement && videoElement.readyState >= 2);
+      const isVideoReady = Boolean(videoElement && videoElement.readyState >= 2);
 
-    if (!isFreezeActive && texture && isVideoReady) {
-      texture.needsUpdate = true;
+      if (!isFreezeActive && texture && isVideoReady) {
+        texture.needsUpdate = true;
+      }
+
+      if (texture && isVideoReady) {
+        const mu = moshPipeline.material.uniforms;
+        mu.tVideo.value = texture;
+        mu.tPrevMosh.value = moshPipeline.read.texture;
+        mu.uDatamosh.value = moshAmt;
+        mu.uTime.value = elapsed;
+        mu.uResolution.value.set(1280, 720);
+
+        state.gl.setRenderTarget(moshPipeline.write);
+        state.gl.render(moshPipeline.scene, moshPipeline.camera);
+        state.gl.setRenderTarget(null);
+
+        const temp = moshPipeline.read;
+        moshPipeline.read = moshPipeline.write;
+        moshPipeline.write = temp;
+
+        u.tDiffuse.value = moshAmt > 0.001 ? moshPipeline.read.texture : texture;
+      } else if (texture && !isVideoReady) {
+        u.tDiffuse.value = moshPipeline.read.texture;
+      }
+
+      u.uTime.value = elapsed;
+      u.uResolution.value.set(size.width, size.height);
+
+      // Core Glitch
+      u.uGlitchIntensity.value = Number.isFinite(p.glitchIntensity) ? p.glitchIntensity : 0;
+      u.uRgbShift.value = Number.isFinite(p.rgbShift) ? p.rgbShift : 0;
+      u.uScanlines.value = Number.isFinite(p.scanlines) ? p.scanlines : 0;
+      u.uColorBleed.value = Number.isFinite(p.colorBleed) ? p.colorBleed : 0;
+      u.uFeedback.value = Number.isFinite(p.feedback) ? p.feedback : 0;
+      u.uNoise.value = Number.isFinite(p.noise) ? p.noise : 0;
+
+      // Vaporwave, VHS & CRT
+      u.uVaporwaveTint.value = Number.isFinite(p.vaporwaveTint) ? p.vaporwaveTint : 0;
+      u.uCrtCurvature.value = Number.isFinite(p.crtCurvature) ? p.crtCurvature : 0;
+      u.uApertureGrille.value = Number.isFinite(p.apertureGrille) ? p.apertureGrille : 0;
+      u.uVhsHeadSwitching.value = Number.isFinite(p.vhsHeadSwitching) ? p.vhsHeadSwitching : 0;
+      u.uVHoldDrift.value = Number.isFinite(p.vHoldDrift) ? p.vHoldDrift : 0;
+
+      // Video Bends & Datamosh
+      u.uMeshDisplacement.value = Number.isFinite(p.meshDisplacement) ? p.meshDisplacement : 0;
+      u.uChromaSmear.value = Number.isFinite(p.chromaSmear) ? p.chromaSmear : 0;
+      u.uAudioReact.value = Number.isFinite(p.audioReact) ? p.audioReact : 0;
+      const rawBass = audioEngine ? audioEngine.getBassEnergy() : (externalBassEnergy || 0.0);
+      u.uAudioBass.value = Number.isFinite(rawBass) ? rawBass : 0.0;
+      u.uLuminance.value = Number.isFinite(p.luminance) ? p.luminance : 0;
+      u.uDatamosh.value = moshAmt;
+
+      // Render main 3D CRT scene
+      state.gl.render(state.scene, state.camera);
+    };
+
+    const blitToVjCanvas = () => {
+      const vjCtx = (window as any).__vjMirrorCtx as CanvasRenderingContext2D | null;
+      const recCtx = (window as any).__recMirrorCtx as CanvasRenderingContext2D | null;
+      if (!vjCtx && !recCtx) return;
+
+      const srcCanvas = state.gl.domElement;
+      const W = srcCanvas.width || 854;
+      const H = srcCanvas.height || 480;
+      const scaleX = Math.min(1, planeWidth / vw);
+      const scaleY = Math.min(1, planeHeight / vh);
+      const sx = Math.round(((1 - scaleX) * 0.5) * W);
+      const sy = Math.round(((1 - scaleY) * 0.5) * H);
+      const sw = Math.max(1, Math.round(scaleX * W));
+      const sh = Math.max(1, Math.round(scaleY * H));
+
+      if (vjCtx) {
+        try {
+          vjCtx.drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, 854, 480);
+        } catch {
+          (window as any).__vjMirrorCtx = null;
+        }
+      }
+
+      if (recCtx) {
+        try {
+          // If 2nd screen canvas is active, copy from the already downscaled 854x480 2D canvas (zero extra WebGL readback!)
+          const fastSource = vjCtx ? vjCtx.canvas : srcCanvas;
+          if (vjCtx) {
+            recCtx.drawImage(fastSource, 0, 0, 854, 480);
+          } else {
+            recCtx.drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, 854, 480);
+          }
+          const track = (window as any).__recVideoTrack;
+          if (track && typeof track.requestFrame === 'function') {
+            track.requestFrame();
+          }
+        } catch {
+          (window as any).__recMirrorCtx = null;
+        }
+      }
+    };
+
+    stepCircuitFrame(state.clock.getElapsedTime());
+    (window as any).__lastMainFrameTime = performance.now();
+    (window as any).__stepCircuitFrame = stepCircuitFrame;
+    (window as any).__blitToVjCanvas = blitToVjCanvas;
+    (window as any).__forceRenderWebGL = () => state.gl.render(state.scene, state.camera);
+
+    // Synchronized 30Hz NTSC VHS Blit for 2nd Screen & Video Recorder (avoids async WebGL pipeline stalls)
+    if ((window as any).__vjMirrorCtx || (window as any).__recMirrorCtx) {
+      (window as any).__vjFrameTick = (((window as any).__vjFrameTick || 0) + 1) % 2;
+      if ((window as any).__vjFrameTick === 0) {
+        blitToVjCanvas();
+      }
     }
-
-    // Update Ping-Pong Temporal Datamosh Buffer only when video has a valid decoded frame
-    // When switching tracks (readyState < 2), keep displaying last frame in moshPipeline.read to prevent black flash
-    if (texture && isVideoReady) {
-      const mu = moshPipeline.material.uniforms;
-      mu.tVideo.value = texture;
-      mu.tPrevMosh.value = moshPipeline.read.texture;
-      mu.uDatamosh.value = moshAmt;
-      mu.uTime.value = state.clock.getElapsedTime();
-      mu.uResolution.value.set(1280, 720);
-
-      state.gl.setRenderTarget(moshPipeline.write);
-      state.gl.render(moshPipeline.scene, moshPipeline.camera);
-      state.gl.setRenderTarget(null);
-
-      // Swap ping-pong buffers
-      const temp = moshPipeline.read;
-      moshPipeline.read = moshPipeline.write;
-      moshPipeline.write = temp;
-
-      // Strictly use raw video texture when Datamosh is 0, and Temporal Optical Flow buffer when > 0
-      u.tDiffuse.value = moshAmt > 0.001 ? moshPipeline.read.texture : texture;
-    } else if (texture && !isVideoReady) {
-      // Seamless visual hold on last frame during track switch
-      u.tDiffuse.value = moshPipeline.read.texture;
-    }
-
-    u.uTime.value = state.clock.getElapsedTime();
-    u.uResolution.value.set(size.width, size.height);
-
-    // Core Glitch
-    u.uGlitchIntensity.value = Number.isFinite(p.glitchIntensity) ? p.glitchIntensity : 0;
-    u.uRgbShift.value = Number.isFinite(p.rgbShift) ? p.rgbShift : 0;
-    u.uScanlines.value = Number.isFinite(p.scanlines) ? p.scanlines : 0;
-    u.uColorBleed.value = Number.isFinite(p.colorBleed) ? p.colorBleed : 0;
-    u.uFeedback.value = Number.isFinite(p.feedback) ? p.feedback : 0;
-    u.uNoise.value = Number.isFinite(p.noise) ? p.noise : 0;
-
-    // Vaporwave, VHS & CRT
-    u.uVaporwaveTint.value = Number.isFinite(p.vaporwaveTint) ? p.vaporwaveTint : 0;
-    u.uCrtCurvature.value = Number.isFinite(p.crtCurvature) ? p.crtCurvature : 0;
-    u.uApertureGrille.value = Number.isFinite(p.apertureGrille) ? p.apertureGrille : 0;
-    u.uVhsHeadSwitching.value = Number.isFinite(p.vhsHeadSwitching) ? p.vhsHeadSwitching : 0;
-    u.uVHoldDrift.value = Number.isFinite(p.vHoldDrift) ? p.vHoldDrift : 0;
-
-    // Video Bends & Datamosh
-    u.uMeshDisplacement.value = Number.isFinite(p.meshDisplacement) ? p.meshDisplacement : 0;
-    u.uChromaSmear.value = Number.isFinite(p.chromaSmear) ? p.chromaSmear : 0;
-    u.uAudioReact.value = Number.isFinite(p.audioReact) ? p.audioReact : 0;
-    const rawBass = audioEngine ? audioEngine.getBassEnergy() : 0.0;
-    u.uAudioBass.value = Number.isFinite(rawBass) ? rawBass : 0.0;
-    u.uLuminance.value = Number.isFinite(p.luminance) ? p.luminance : 0;
-    u.uDatamosh.value = moshAmt;
-  });
+  }, 1);
 
   return (
     <mesh ref={meshRef} scale={[planeWidth, planeHeight, 1]}>
@@ -201,6 +265,13 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
   isFreezeActive = false,
   isTapeFreeze,
   audioEngine = null,
+  externalBassEnergy = 0,
+  isTrackCached = false,
+  loopStart = null,
+  loopEnd = null,
+  onSetLoopStart,
+  onSetLoopEnd,
+  onClearLoop,
   showTimeline = true,
   showVcrOsd = false,
   onToggleVcrOsd,
@@ -295,7 +366,7 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
         className="w-full h-full block"
         dpr={1}
         gl={{
-          preserveDrawingBuffer: true,
+          preserveDrawingBuffer: false,
           antialias: false,
           alpha: false,
           powerPreference: 'high-performance',
@@ -310,6 +381,7 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
           params={videoParams} 
           isFreezeActive={isStoppedAndFrozen}
           audioEngine={audioEngine}
+          externalBassEnergy={externalBassEnergy}
         />
       </Canvas>
 
@@ -483,6 +555,20 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
             <span className="text-amber-400 font-bold truncate max-w-[340px]">
               {title}
             </span>
+            {isTrackCached && (
+              <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-600/80 text-[9px] font-bold flex items-center gap-1">
+                <HardDrive size={10} />
+                <span>DISK CACHE</span>
+              </span>
+            )}
+            {loopStart !== null && (
+              <span className="ml-1 px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 border border-cyan-500/80 text-[9px] font-bold flex items-center gap-1 animate-pulse">
+                <Repeat size={10} />
+                <span>
+                  LOOP {formatTime(loopStart)} → {loopEnd !== null ? formatTime(loopEnd) : '...'}
+                </span>
+              </span>
+            )}
           </div>
         ) : (
           <div />
@@ -535,23 +621,38 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
           <span className="text-[10px] font-mono text-neutral-400 w-10 text-right">
             {formatTime(currentTime)}
           </span>
-          <input
-            type="range"
-            min="0"
-            max={safeDuration}
-            step="0.1"
-            value={Math.min(currentTime, safeDuration)}
-            onChange={(e) => onSeek && onSeek(parseFloat(e.target.value))}
-            className="flex-1 h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-amber-500 hover:accent-amber-400"
-          />
+          <div className="relative flex-1 flex items-center">
+            {loopStart !== null && safeDuration > 0 && (
+              <div
+                className="absolute h-2 bg-cyan-500/35 border-x border-cyan-400 pointer-events-none rounded-sm z-10"
+                style={{
+                  left: `${Math.min(100, (loopStart / safeDuration) * 100)}%`,
+                  width: `${
+                    loopEnd !== null && loopEnd > loopStart
+                      ? Math.min(100, ((loopEnd - loopStart) / safeDuration) * 100)
+                      : 1.5
+                  }%`
+                }}
+              />
+            )}
+            <input
+              type="range"
+              min="0"
+              max={safeDuration}
+              step="0.1"
+              value={Math.min(currentTime, safeDuration)}
+              onChange={(e) => onSeek && onSeek(parseFloat(e.target.value))}
+              className="w-full h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-amber-500 hover:accent-amber-400"
+            />
+          </div>
           <span className="text-[10px] font-mono text-neutral-400 w-10">
             {formatTime(safeDuration)}
           </span>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
+        <div className="flex items-center justify-between flex-wrap gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               onClick={onPrev}
               className="p-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
@@ -579,7 +680,7 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
             {handleTapeFreezeAction && (
               <button
                 onClick={handleTapeFreezeAction}
-                className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold flex items-center gap-1 ml-2 transition-all border ${
+                className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold flex items-center gap-1 ml-1 transition-all border ${
                   isStoppedAndFrozen
                     ? 'bg-gradient-to-r from-rose-600 to-cyan-600 text-white border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.6)] animate-pulse'
                     : 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700'
@@ -589,6 +690,46 @@ export const VideoViewport: React.FC<VideoViewportProps> = ({
                 <Zap size={10} className={isStoppedAndFrozen ? 'text-cyan-200' : 'text-rose-400'} />
                 <span>{isStoppedAndFrozen ? 'RESUME' : 'TAPE STOP // FREEZE'}</span>
               </button>
+            )}
+
+            {/* Desktop A/B Loop Controls (Instant Seek Loop) */}
+            {onSetLoopStart && onSetLoopEnd && (
+              <div className="flex items-center gap-1 ml-1 pl-2 border-l border-neutral-800 font-mono text-[10px]">
+                <button
+                  type="button"
+                  onClick={onSetLoopStart}
+                  className={`px-1.5 py-0.5 rounded border font-bold transition-colors ${
+                    loopStart !== null
+                      ? 'bg-cyan-600 text-white border-cyan-300'
+                      : 'bg-neutral-900 hover:bg-neutral-800 text-cyan-400 border-neutral-700'
+                  }`}
+                  title="Marquer le point d'entrée de boucle A [Touche I]"
+                >
+                  [ A {loopStart !== null ? formatTime(loopStart) : 'IN'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onSetLoopEnd}
+                  className={`px-1.5 py-0.5 rounded border font-bold transition-colors ${
+                    loopEnd !== null
+                      ? 'bg-cyan-600 text-white border-cyan-300'
+                      : 'bg-neutral-900 hover:bg-neutral-800 text-cyan-400 border-neutral-700'
+                  }`}
+                  title="Marquer le point de sortie de boucle B [Touche O]"
+                >
+                  B {loopEnd !== null ? formatTime(loopEnd) : 'OUT'} ]
+                </button>
+                {(loopStart !== null || loopEnd !== null) && onClearLoop && (
+                  <button
+                    type="button"
+                    onClick={onClearLoop}
+                    className="px-1.5 py-0.5 rounded bg-neutral-800 hover:bg-rose-900 text-neutral-300 hover:text-white border border-neutral-700 font-bold"
+                    title="Effacer la boucle A/B"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

@@ -42,4 +42,6 @@ downloads/
 */downloads/
 cache/
 */cache/
+data/
+*/data/
 .eslintcache

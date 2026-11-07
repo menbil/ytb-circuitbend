@@ -1,5 +1,16 @@
 import React, { useRef } from 'react';
-import { Volume2, ListMusic, Video, Monitor, FolderOpen, Share2, Check } from 'lucide-react';
+import {
+  Volume2,
+  ListMusic,
+  Video,
+  Monitor,
+  FolderOpen,
+  Share2,
+  Check,
+  Radio,
+  ExternalLink,
+  HardDrive
+} from 'lucide-react';
 import { LiveInputSource } from '../types/index.js';
 
 interface HeaderProps {
@@ -13,6 +24,9 @@ interface HeaderProps {
   onLoadLocalFile?: (file: File) => void;
   onShareUrl?: () => void;
   shareUrlCopied?: boolean;
+  onOpenVjWindow?: () => void;
+  isVjWindowOpen?: boolean;
+  cachedTrackCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,7 +39,10 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectLiveSource,
   onLoadLocalFile,
   onShareUrl,
-  shareUrlCopied = false
+  shareUrlCopied = false,
+  onOpenVjWindow,
+  isVjWindowOpen = false,
+  cachedTrackCount = 0
 }) => {
   const isAudioActive = audioContextState === 'running';
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -44,11 +61,20 @@ export const Header: React.FC<HeaderProps> = ({
                 CIRCUIT//BEND
               </h1>
               <span className="text-[9px] font-mono bg-neutral-800 text-amber-400 px-1.5 py-0.5 rounded border border-neutral-700 font-bold">
-                TAPE & VAPORWAVE DSP
+                DESKTOP LOCAL STUDIO
               </span>
+              {cachedTrackCount > 0 && (
+                <span
+                  className="hidden sm:inline-flex items-center gap-1 text-[9px] font-mono bg-emerald-950/80 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-700/70 font-bold"
+                  title={`${cachedTrackCount} pistes YouTube en cache disque local (Seek instantané & 1080p)`}
+                >
+                  <HardDrive size={10} />
+                  <span>{cachedTrackCount} CACHED</span>
+                </span>
+              )}
             </div>
             <p className="text-[9px] font-mono text-neutral-500 hidden sm:block">
-              REAL-TIME ANALOG GLITCH & MODULAR TAPE WARP STUDIO
+              100% LOCAL ANALOG GLITCH, DISK CACHE &amp; MODULAR TAPE WARP STUDIO
             </p>
           </div>
         </div>
@@ -65,9 +91,9 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-amber-500 text-black shadow-[0_0_8px_rgba(255,157,0,0.5)]'
                     : 'text-neutral-400 hover:text-white'
                 }`}
-                title="Flux YouTube / Playlist"
+                title="Flux YouTube / Cache Disque Local"
               >
-                YT STREAM
+                YT / CACHE
               </button>
               <button
                 type="button"
@@ -77,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.6)]'
                     : 'text-neutral-400 hover:text-cyan-300'
                 }`}
-                title="Flux caméra en direct vers le moteur vidéo VHS/CRT"
+                title="Flux caméra + micro en direct vers le moteur vidéo/audio"
               >
                 <Video size={11} />
                 <span>WEBCAM</span>
@@ -90,10 +116,23 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-purple-500 text-white shadow-[0_0_8px_rgba(168,85,247,0.6)]'
                     : 'text-neutral-400 hover:text-purple-300'
                 }`}
-                title="Capture d'écran ou de fenêtre en temps réel"
+                title="Capture d'écran + Audio Système PC (Spotify/DAW/Jeu) en temps réel"
               >
                 <Monitor size={11} />
-                <span>SCREEN</span>
+                <span>SCREEN+AUDIO</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectLiveSource('systemAudio')}
+                className={`px-2 py-1 rounded font-bold flex items-center gap-1 transition-all ${
+                  liveSource === 'systemAudio'
+                    ? 'bg-rose-500 text-white shadow-[0_0_8px_rgba(244,63,94,0.6)]'
+                    : 'text-neutral-400 hover:text-rose-300'
+                }`}
+                title="Mode Visualiseur Spotify / VJ : coupe le son de la vidéo et fait réagir la télé CRT et ENV AUDIO aux basses de votre PC"
+              >
+                <Radio size={11} />
+                <span>SPOTIFY VJ</span>
               </button>
               <button
                 type="button"
@@ -124,6 +163,23 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
+          {/* Dual-Window VJ Projector Output Button */}
+          {onOpenVjWindow && (
+            <button
+              type="button"
+              onClick={onOpenVjWindow}
+              className={`px-2.5 py-1 rounded font-mono text-[10px] font-bold flex items-center gap-1.5 border transition-all ${
+                isVjWindowOpen
+                  ? 'bg-purple-600 text-white border-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.6)]'
+                  : 'bg-neutral-900 hover:bg-neutral-800 text-purple-300 border-purple-800/80'
+              }`}
+              title="Ouvrir une 2ème fenêtre dédiée (Écran CRT / Projecteur VJ / Capture OBS sans interface)"
+            >
+              <ExternalLink size={12} />
+              <span>{isVjWindowOpen ? 'VJ OUT ACTIF' : 'VJ 2ND SCREEN'}</span>
+            </button>
+          )}
+
           {/* Share Patch URL Button */}
           {onShareUrl && (
             <button
@@ -145,12 +201,14 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="hidden lg:flex items-center gap-2.5 bg-black/70 px-2.5 py-1 rounded border border-neutral-800 text-[10px] font-mono">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#00ff73]"></span>
-              <span className="text-neutral-400">MAINS</span>
+              <span className="text-neutral-400">LOCAL</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full ${
-                isAudioActive ? 'bg-amber-400 shadow-[0_0_6px_#ff9d00]' : 'bg-rose-500 animate-ping'
-              }`}></span>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isAudioActive ? 'bg-amber-400 shadow-[0_0_6px_#ff9d00]' : 'bg-rose-500 animate-ping'
+                }`}
+              ></span>
               <span className={isAudioActive ? 'text-amber-400 font-bold' : 'text-rose-400'}>
                 {audioContextState.toUpperCase()}
               </span>
@@ -178,10 +236,12 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ListMusic size={15} />
-            <span>PLAYLIST</span>
-            <span className={`px-1.5 py-0.2 rounded text-[10px] ${
-              isPlaylistOpen ? 'bg-black text-amber-400' : 'bg-neutral-700 text-neutral-300'
-            }`}>
+            <span>LIBRARY / YT</span>
+            <span
+              className={`px-1.5 py-0.2 rounded text-[10px] ${
+                isPlaylistOpen ? 'bg-black text-amber-400' : 'bg-neutral-700 text-neutral-300'
+              }`}
+            >
               {playlistCount}
             </span>
           </button>

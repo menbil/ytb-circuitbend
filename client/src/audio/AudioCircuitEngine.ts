@@ -4,6 +4,8 @@ import { computeBitcrushCurve, computeDriveCurve } from './dspUtils.js';
 export class AudioCircuitEngine {
   private ctx: AudioContext | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
+  private mediaElementGain: GainNode | null = null;
+  private liveStreamSourceNode: MediaStreamAudioSourceNode | null = null;
   private connectedElement: HTMLMediaElement | null = null;
 
   // Circuit Bends
@@ -56,6 +58,8 @@ export class AudioCircuitEngine {
   // Master Limiter & Analyser
   private limiterNode: DynamicsCompressorNode | null = null;
   private masterGain: GainNode | null = null;
+  private dspToAnalyserGain: GainNode | null = null;
+  private speakerOutGain: GainNode | null = null;
   private analyserNode: AnalyserNode | null = null;
 
   // Stream Recording Destination & Audio Analysis Buffer
@@ -281,11 +285,15 @@ export class AudioCircuitEngine {
       this.streamDestination = this.ctx.createMediaStreamDestination();
 
       // 9. WIRING THE SIGNAL CHAIN
-      // A. Source -> Granular Stutter Split (Zero-latency Dry + Freeze Loop Wet)
-      this.sourceNode.connect(this.stutterDryGain);
+      // A. Source -> mediaElementGain -> Granular Stutter Split (Zero-latency Dry + Freeze Loop Wet)
+      this.mediaElementGain = this.ctx.createGain();
+      this.mediaElementGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      this.sourceNode.connect(this.mediaElementGain);
+
+      this.mediaElementGain.connect(this.stutterDryGain);
       this.stutterDryGain.connect(this.bitcrusherNode);
 
-      this.sourceNode.connect(this.stutterInputGain);
+      this.mediaElementGain.connect(this.stutterInputGain);
       this.stutterInputGain.connect(this.stutterDelayNode);
       this.stutterDelayNode.connect(this.stutterFeedbackGain);
       this.stutterFeedbackGain.connect(this.stutterDelayNode);
@@ -323,11 +331,19 @@ export class AudioCircuitEngine {
       this.dropoutGain.connect(this.limiterNode);
       this.hissGain.connect(this.limiterNode);
 
-      // F. Limiter -> Master -> Analyser & Output & MediaStream Destination
+      // F. Limiter -> Master -> dspToAnalyserGain -> Analyser -> speakerOutGain -> Output
+      this.dspToAnalyserGain = this.ctx.createGain();
+      this.dspToAnalyserGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+
+      this.speakerOutGain = this.ctx.createGain();
+      this.speakerOutGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+
       this.limiterNode.connect(this.masterGain);
-      this.masterGain.connect(this.analyserNode);
+      this.masterGain.connect(this.dspToAnalyserGain);
+      this.dspToAnalyserGain.connect(this.analyserNode);
       this.masterGain.connect(this.streamDestination);
-      this.analyserNode.connect(this.ctx.destination);
+      this.analyserNode.connect(this.speakerOutGain);
+      this.speakerOutGain.connect(this.ctx.destination);
 
       this.updateBitcrushCurve(0.0);
       this.updateDriveCurve(0.0);
@@ -337,6 +353,81 @@ export class AudioCircuitEngine {
       return true;
     } catch (err) {
       console.error('[WebAudio] Init error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Connects or disconnects a live MediaStream (Spotify / PC System Audio or External Soundcard/Mic)
+   * in Silent Audio-Reactive Visualizer Mode:
+   * - Completely mutes the video track and internal speaker output so there is ZERO duplicate audio
+   * - Routes the external audio directly into the FFT AnalyserNode to drive 3D CRT shaders, Kick Detection,
+   *   Oscilloscope, and the Serum-style `ENV AUDIO` modulator at 60fps.
+   */
+  public connectLiveStream(stream: MediaStream | null, mediaElement?: HTMLMediaElement | null): boolean {
+    if (!this.isInitialized && mediaElement) {
+      this.init(mediaElement);
+    }
+    if (!this.ctx || !this.analyserNode) return false;
+
+    if (this.liveStreamSourceNode) {
+      try {
+        this.liveStreamSourceNode.disconnect();
+      } catch {}
+      this.liveStreamSourceNode = null;
+    }
+
+    if (!stream || stream.getAudioTracks().length === 0) {
+      if (this.connectedElement) {
+        this.connectedElement.muted = false;
+      }
+      if (this.mediaElementGain && this.ctx) {
+        this.mediaElementGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      }
+      if (this.dspToAnalyserGain && this.ctx) {
+        this.dspToAnalyserGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      }
+      if (this.speakerOutGain && this.ctx) {
+        this.speakerOutGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      }
+      return false;
+    }
+
+    try {
+      this.resume();
+      // 1. Mute underlying HTML5 video element AND its WebAudio source gain so video audio is 100% silent
+      if (mediaElement) {
+        mediaElement.muted = true;
+      }
+      if (this.connectedElement) {
+        this.connectedElement.muted = true;
+      }
+      if (this.mediaElementGain) {
+        this.mediaElementGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+      }
+      // 2. Isolate AnalyserNode from internal Tape Hiss & mute speaker output to avoid doubling Spotify audio
+      if (this.dspToAnalyserGain) {
+        this.dspToAnalyserGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+      }
+      if (this.speakerOutGain) {
+        this.speakerOutGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+      }
+      // 3. Connect live Spotify / PC Audio stream directly to FFT AnalyserNode
+      this.liveStreamSourceNode = this.ctx.createMediaStreamSource(stream);
+      this.liveStreamSourceNode.connect(this.analyserNode);
+      console.log('[WebAudio] Audio-Reactive Visualizer Mode Active (Video muted, FFT driven by external audio).');
+      return true;
+    } catch (err) {
+      if (this.mediaElementGain && this.ctx) {
+        this.mediaElementGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      }
+      if (this.dspToAnalyserGain && this.ctx) {
+        this.dspToAnalyserGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      }
+      if (this.speakerOutGain && this.ctx) {
+        this.speakerOutGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      }
+      console.warn('[WebAudio] Could not connect Live MediaStream audio:', err);
       return false;
     }
   }

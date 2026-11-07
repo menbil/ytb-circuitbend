@@ -151,4 +151,4 @@ export interface LfoConfig {
   routings?: ModRouting[];
 }
 
-export type LiveInputSource = 'youtube' | 'webcam' | 'screen' | 'local';
+export type LiveInputSource = 'youtube' | 'webcam' | 'screen' | 'local' | 'systemAudio';

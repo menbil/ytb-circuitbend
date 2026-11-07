@@ -5,6 +5,7 @@ export interface PlaylistItem {
   thumbnail: string;
   streamUrl: string;
   author?: string;
+  isLocal?: boolean;
 }
 
 export interface PlaylistResponse {
