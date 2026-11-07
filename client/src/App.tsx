@@ -1978,116 +1978,294 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const lastRandomStyleRef = useRef<number>(-1);
+
   const handleRandomize = () => {
     setActivePresetId('custom-random');
     const rnd = (min: number, max: number) => min + Math.random() * (max - min);
+    const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
-    const randomVideo: VideoBendingParams = {
-      glitchIntensity: Number(rnd(0.04, 0.35).toFixed(2)),
-      rgbShift: Number(rnd(0.08, 0.38).toFixed(2)),
-      scanlines: Number(rnd(0.15, 0.55).toFixed(2)),
-      colorBleed: Number(rnd(0.15, 0.50).toFixed(2)),
-      feedback: Number(rnd(0.05, 0.32).toFixed(2)),
-      noise: Number(rnd(0.03, 0.18).toFixed(2)),
-      vaporwaveTint: Number(rnd(0.25, 0.80).toFixed(2)),
-      crtCurvature: Number(rnd(0.08, 0.30).toFixed(2)),
-      apertureGrille: Number(rnd(0.12, 0.50).toFixed(2)),
-      vhsHeadSwitching: Math.random() > 0.4 ? Number(rnd(0.10, 0.40).toFixed(2)) : 0.0,
-      vHoldDrift: Math.random() > 0.85 ? Number(rnd(0.02, 0.10).toFixed(2)) : 0.0,
-      meshDisplacement: Number(rnd(0.05, 0.35).toFixed(2)),
-      chromaSmear: Number(rnd(0.05, 0.35).toFixed(2)),
-      audioReact: Number(rnd(0.15, 0.55).toFixed(2)),
-      luminance: Number(rnd(0.05, 0.35).toFixed(2)),
-      datamosh: Number(rnd(0.08, 0.55).toFixed(2))
+    // Pick one of 8 radically distinct aesthetic archetypes (never repeating the same archetype twice in a row!)
+    const totalStyles = 8;
+    let styleIdx = Math.floor(Math.random() * totalStyles);
+    if (styleIdx === lastRandomStyleRef.current) {
+      styleIdx = (styleIdx + 1 + Math.floor(Math.random() * (totalStyles - 1))) % totalStyles;
+    }
+    lastRandomStyleRef.current = styleIdx;
+
+    // Clean baseline so only the chosen archetype's signature parameters are pushed hard (avoids muddy "all-at-20%" soup)
+    const baseVideo: VideoBendingParams = {
+      glitchIntensity: 0.0,
+      rgbShift: 0.04,
+      scanlines: 0.12,
+      colorBleed: 0.0,
+      feedback: 0.0,
+      noise: 0.02,
+      vaporwaveTint: 0.0,
+      crtCurvature: 0.12,
+      apertureGrille: 0.15,
+      vhsHeadSwitching: 0.0,
+      vHoldDrift: 0.0,
+      meshDisplacement: 0.0,
+      chromaSmear: 0.0,
+      audioReact: Number(rnd(0.35, 0.85).toFixed(2)),
+      luminance: 0.0,
+      datamosh: 0.0,
+      orbit3d: 0.0,
+      tunnel3d: 0.0
     };
 
-    const randomAudio: AudioBendingParams = {
+    const baseAudio: AudioBendingParams = {
       ...audioParams,
-      tapeSpeed: Math.random() > 0.35 ? Number(rnd(0.82, 0.96).toFixed(2)) : 1.0,
-      wowRate: Number(rnd(0.4, 1.2).toFixed(1)),
-      wowDepth: Number(rnd(0.03, 0.14).toFixed(2)),
-      flutterRate: Number(rnd(6.0, 9.5).toFixed(1)),
-      flutterDepth: Number(rnd(0.01, 0.06).toFixed(2)),
-      tapeTone: Number(rnd(0.15, 0.42).toFixed(2)),
-      tapeHiss: Number(rnd(0.003, 0.015).toFixed(3)),
-      tapeDropouts: Math.random() > 0.5 ? Number(rnd(0.02, 0.08).toFixed(2)) : 0.0,
-      stutterSpeed: Number(rnd(0.08, 0.18).toFixed(2)),
-      reverbWet: Number(rnd(0.15, 0.38).toFixed(2)),
-      bitcrush: Math.random() > 0.65 ? Number(rnd(0.01, 0.04).toFixed(2)) : 0.0,
-      drive: Number(rnd(0.04, 0.16).toFixed(2)),
-      ringModMix: Math.random() > 0.75 ? Number(rnd(0.05, 0.22).toFixed(2)) : 0.0,
-      ringModFreq: Math.round(rnd(90, 340)),
-      filterCutoff: Math.round(rnd(3500, 9200)),
-      filterResonance: Number(rnd(0.8, 1.8).toFixed(1)),
+      tapeSpeed: 1.0,
+      wowRate: Number(rnd(0.5, 1.6).toFixed(1)),
+      wowDepth: 0.02,
+      flutterRate: Number(rnd(6.0, 11.0).toFixed(1)),
+      flutterDepth: 0.01,
+      tapeTone: 0.15,
+      tapeHiss: 0.004,
+      tapeDropouts: 0.0,
+      stutterSpeed: Number(rnd(0.07, 0.22).toFixed(2)),
+      reverbWet: 0.12,
+      bitcrush: 0.0,
+      drive: 0.05,
+      ringModMix: 0.0,
+      ringModFreq: Math.round(rnd(80, 480)),
+      filterCutoff: 12000,
+      filterResonance: 1.0,
       filterType: 'lowpass'
     };
 
-    const musicalShapes: LfoShape[] = ['sine', 'triangle', 'drift', 'sine', 'drift', 'triangle'];
-    const randomShape = musicalShapes[Math.floor(Math.random() * musicalShapes.length)];
+    let styleName = '';
+    let styleSub = '';
+    let lfo1Shape: LfoShape = 'sine';
+    let lfo2Shape: LfoShape = 'triangle';
+    let routings: ModRouting[] = [];
 
-    const randomTargets: Record<LfoTargetId, boolean> = {
-      filterCutoff: false,
-      tapeSpeed: false,
-      drive: false,
-      reverbWet: false,
-      glitchIntensity: false,
-      rgbShift: false,
-      scanlines: false,
-      meshDisplacement: false,
-      luminance: false,
-      colorBleed: false
-    };
-
-    const audioChoices: LfoTargetId[] = ['filterCutoff', 'reverbWet', 'drive'];
-    const chosenAudio = audioChoices[Math.floor(Math.random() * audioChoices.length)];
-    randomTargets[chosenAudio] = true;
-
-    const videoChoices: LfoTargetId[] = ['rgbShift', 'scanlines', 'luminance', 'meshDisplacement', 'glitchIntensity'];
-    const numVideo = Math.floor(rnd(1, 3));
-    const shuffledVideo = [...videoChoices].sort(() => 0.5 - Math.random());
-    for (let i = 0; i < numVideo; i++) {
-      randomTargets[shuffledVideo[i]] = true;
+    switch (styleIdx) {
+      case 0: {
+        // 1. 3D RUTT-ETRA TOPOGRAPHY + ORBIT
+        styleName = '🏔️ 3D RUTT-ETRA RELIEF & ORBIT';
+        styleSub = 'Extrusion Z haute-fidélité + Caméra 3D flottante';
+        baseVideo.meshDisplacement = Number(rnd(0.62, 0.95).toFixed(2));
+        baseVideo.orbit3d = Number(rnd(0.55, 0.90).toFixed(2));
+        baseVideo.rgbShift = Number(rnd(0.12, 0.32).toFixed(2));
+        baseVideo.scanlines = Number(rnd(0.25, 0.55).toFixed(2));
+        baseVideo.crtCurvature = 0.0;
+        baseAudio.tapeSpeed = Number(rnd(0.86, 0.98).toFixed(2));
+        baseAudio.reverbWet = Number(rnd(0.35, 0.62).toFixed(2));
+        baseAudio.filterCutoff = Math.round(rnd(3200, 7500));
+        baseAudio.filterResonance = Number(rnd(2.2, 5.5).toFixed(1));
+        lfo1Shape = 'sine';
+        lfo2Shape = 'drift';
+        routings = [
+          { id: `r1-${Date.now()}`, source: 'envAudio', target: 'video.meshDisplacement', amount: 0.55, bipolar: false },
+          { id: `r2-${Date.now() + 1}`, source: 'lfo1', target: 'video.orbit3d', amount: 0.45, bipolar: true }
+        ];
+        break;
+      }
+      case 1: {
+        // 2. INFINITE 3D MIRROR TUNNEL + CATHEDRAL SLOWED
+        styleName = '🌀 3D INFINITE MIRROR TUNNEL';
+        styleSub = 'Corridor Z infini + Reverb Cathédrale Slowed';
+        baseVideo.tunnel3d = Number(rnd(0.62, 0.95).toFixed(2));
+        baseVideo.orbit3d = Number(rnd(0.35, 0.72).toFixed(2));
+        baseVideo.vaporwaveTint = Number(rnd(0.45, 0.90).toFixed(2));
+        baseVideo.rgbShift = Number(rnd(0.15, 0.40).toFixed(2));
+        baseAudio.tapeSpeed = Number(rnd(0.68, 0.82).toFixed(2));
+        baseAudio.reverbWet = Number(rnd(0.55, 0.85).toFixed(2));
+        baseAudio.delayTime = Number(rnd(0.22, 0.42).toFixed(2));
+        baseAudio.filterCutoff = Math.round(rnd(1800, 4200));
+        lfo1Shape = 'triangle';
+        lfo2Shape = 'sine';
+        routings = [
+          { id: `r1-${Date.now()}`, source: 'lfo1', target: 'video.tunnel3d', amount: 0.4, bipolar: true },
+          { id: `r2-${Date.now() + 1}`, source: 'envAudio', target: 'video.rgbShift', amount: 0.6, bipolar: false }
+        ];
+        break;
+      }
+      case 2: {
+        // 3. LIQUID DATAMOSH P-FRAME MELT
+        styleName = '🫠 LIQUID DATAMOSH MELT';
+        styleSub = 'Compression P-Frame fondue + Basse sub-aquatique';
+        baseVideo.datamosh = Number(rnd(0.68, 0.94).toFixed(2));
+        baseVideo.chromaSmear = Number(rnd(0.40, 0.80).toFixed(2));
+        baseVideo.feedback = Number(rnd(0.25, 0.55).toFixed(2));
+        baseVideo.scanlines = 0.0;
+        baseVideo.crtCurvature = 0.05;
+        baseAudio.tapeSpeed = Number(rnd(0.75, 0.92).toFixed(2));
+        baseAudio.filterCutoff = Math.round(rnd(900, 2600));
+        baseAudio.filterResonance = Number(rnd(3.0, 7.5).toFixed(1));
+        baseAudio.drive = Number(rnd(0.18, 0.42).toFixed(2));
+        lfo1Shape = 'drift';
+        lfo2Shape = 'saw';
+        routings = [
+          { id: `r1-${Date.now()}`, source: 'envAudio', target: 'video.datamosh', amount: 0.65, bipolar: false },
+          { id: `r2-${Date.now() + 1}`, source: 'lfo1', target: 'audio.filterCutoff', amount: 0.45, bipolar: true }
+        ];
+        break;
+      }
+      case 3: {
+        // 4. CHOPPED & SCREWED 0.60x MALLSOFT
+        styleName = '🌴 CHOPPED & SCREWED VAPORWAVE';
+        styleSub = 'Ralenti extrême + Teinte Fuchsia/Cyan + Mall Reverb';
+        baseVideo.vaporwaveTint = Number(rnd(0.78, 1.0).toFixed(2));
+        baseVideo.crtCurvature = Number(rnd(0.35, 0.65).toFixed(2));
+        baseVideo.apertureGrille = Number(rnd(0.45, 0.80).toFixed(2));
+        baseVideo.scanlines = Number(rnd(0.35, 0.65).toFixed(2));
+        baseVideo.chromaSmear = Number(rnd(0.30, 0.60).toFixed(2));
+        baseAudio.tapeSpeed = Number(rnd(0.56, 0.72).toFixed(2));
+        baseAudio.wowDepth = Number(rnd(0.18, 0.42).toFixed(2));
+        baseAudio.reverbWet = Number(rnd(0.60, 0.88).toFixed(2));
+        baseAudio.tapeTone = Number(rnd(0.65, 0.95).toFixed(2));
+        baseAudio.filterCutoff = Math.round(rnd(1600, 3400));
+        lfo1Shape = 'sine';
+        lfo2Shape = 'drift';
+        routings = [
+          { id: `r1-${Date.now()}`, source: 'lfo1', target: 'video.vaporwaveTint', amount: 0.35, bipolar: true },
+          { id: `r2-${Date.now() + 1}`, source: 'envAudio', target: 'video.luminance', amount: 0.5, bipolar: false }
+        ];
+        break;
+      }
+      case 4: {
+        // 5. CYBERPUNK 8-BIT CIRCUIT SHORT & RING MOD
+        styleName = '⚡ CYBERPUNK GLITCH & RING-MOD';
+        styleSub = 'Décrochage H-Sync violent + Bitcrusher + Ring Modulator';
+        baseVideo.glitchIntensity = Number(rnd(0.58, 0.90).toFixed(2));
+        baseVideo.rgbShift = Number(rnd(0.45, 0.85).toFixed(2));
+        baseVideo.colorBleed = Number(rnd(0.40, 0.78).toFixed(2));
+        baseVideo.vhsHeadSwitching = Number(rnd(0.35, 0.75).toFixed(2));
+        baseAudio.bitcrush = Number(rnd(0.22, 0.58).toFixed(2));
+        baseAudio.ringModMix = Number(rnd(0.20, 0.48).toFixed(2));
+        baseAudio.ringModFreq = Math.round(rnd(140, 520));
+        baseAudio.drive = Number(rnd(0.25, 0.55).toFixed(2));
+        baseAudio.filterType = pick(['bandpass', 'highpass', 'lowpass']);
+        baseAudio.filterCutoff = Math.round(rnd(1400, 4800));
+        baseAudio.filterResonance = Number(rnd(4.0, 10.0).toFixed(1));
+        lfo1Shape = 'random';
+        lfo2Shape = 'square';
+        routings = [
+          { id: `r1-${Date.now()}`, source: 'lfo1', target: 'video.glitchIntensity', amount: 0.6, bipolar: true },
+          { id: `r2-${Date.now() + 1}`, source: 'envAudio', target: 'video.rgbShift', amount: 0.7, bipolar: false }
+        ];
+        break;
+      }
+      case 5: {
+        // 6. DAMAGED 1984 VHS CAMCORDER TAPE
+        styleName = '📼 DAMAGED 1984 VHS CAMCORDER';
+        styleSub = 'V-Hold déréglé + Bandes magnétiques froissées + Bruit RF';
+        baseVideo.vHoldDrift = Number(rnd(0.08, 0.28).toFixed(2));
+        baseVideo.vhsHeadSwitching = Number(rnd(0.55, 0.92).toFixed(2));
+        baseVideo.noise = Number(rnd(0.22, 0.48).toFixed(2));
+        baseVideo.chromaSmear = Number(rnd(0.50, 0.85).toFixed(2));
+        baseVideo.crtCurvature = Number(rnd(0.30, 0.55).toFixed(2));
+        baseAudio.wowDepth = Number(rnd(0.25, 0.55).toFixed(2));
+        baseAudio.flutterDepth = Number(rnd(0.12, 0.35).toFixed(2));
+        baseAudio.tapeDropouts = Number(rnd(0.18, 0.45).toFixed(2));
+        baseAudio.tapeTone = Number(rnd(0.70, 0.98).toFixed(2));
+        baseAudio.tapeHiss = Number(rnd(0.02, 0.05).toFixed(3));
+        baseAudio.filterCutoff = Math.round(rnd(1800, 3200));
+        lfo1Shape = 'drift';
+        lfo2Shape = 'random';
+        routings = [
+          { id: `r1-${Date.now()}`, source: 'lfo1', target: 'audio.tapeSpeed', amount: 0.18, bipolar: true },
+          { id: `r2-${Date.now() + 1}`, source: 'envAudio', target: 'video.vhsHeadSwitching', amount: 0.55, bipolar: false }
+        ];
+        break;
+      }
+      case 6: {
+        // 7. SOLARIZED ACID PSYCHEDELIA
+        styleName = '🌈 SOLARIZED ACID PSYCHEDELIA';
+        styleSub = 'Inversion de luminance + Color Bleed + Filtre Acide Résonant';
+        baseVideo.luminance = Number(rnd(0.68, 0.96).toFixed(2));
+        baseVideo.colorBleed = Number(rnd(0.65, 0.95).toFixed(2));
+        baseVideo.feedback = Number(rnd(0.45, 0.82).toFixed(2));
+        baseVideo.orbit3d = Number(rnd(0.25, 0.55).toFixed(2));
+        baseAudio.filterCutoff = Math.round(rnd(650, 2800));
+        baseAudio.filterResonance = Number(rnd(7.5, 15.0).toFixed(1));
+        baseAudio.drive = Number(rnd(0.30, 0.65).toFixed(2));
+        baseAudio.reverbWet = Number(rnd(0.30, 0.55).toFixed(2));
+        lfo1Shape = 'saw';
+        lfo2Shape = 'triangle';
+        routings = [
+          { id: `r1-${Date.now()}`, source: 'lfo1', target: 'audio.filterCutoff', amount: 0.55, bipolar: true },
+          { id: `r2-${Date.now() + 1}`, source: 'lfo2', target: 'video.luminance', amount: 0.5, bipolar: true },
+          { id: `r3-${Date.now() + 2}`, source: 'envAudio', target: 'video.colorBleed', amount: 0.6, bipolar: false }
+        ];
+        break;
+      }
+      default: {
+        // 8. 3D VORTEX + FULL AUDIO-REACTIVE KICK MATRIX
+        styleName = '🚀 3D VORTEX // AUDIO-REACTIVE MATRIX';
+        styleSub = 'Tunnel 3D + Relief Z + Orbit 100% pilotés par les basses';
+        baseVideo.meshDisplacement = Number(rnd(0.45, 0.85).toFixed(2));
+        baseVideo.tunnel3d = Number(rnd(0.42, 0.78).toFixed(2));
+        baseVideo.orbit3d = Number(rnd(0.60, 0.95).toFixed(2));
+        baseVideo.audioReact = Number(rnd(0.80, 1.0).toFixed(2));
+        baseVideo.datamosh = Number(rnd(0.25, 0.55).toFixed(2));
+        baseAudio.tapeSpeed = Number(rnd(0.88, 1.05).toFixed(2));
+        baseAudio.drive = Number(rnd(0.15, 0.35).toFixed(2));
+        baseAudio.reverbWet = Number(rnd(0.25, 0.50).toFixed(2));
+        baseAudio.filterCutoff = Math.round(rnd(2800, 8500));
+        lfo1Shape = 'sawDown';
+        lfo2Shape = 'sine';
+        routings = [
+          { id: `r1-${Date.now()}`, source: 'envAudio', target: 'video.orbit3d', amount: 0.7, bipolar: false },
+          { id: `r2-${Date.now() + 1}`, source: 'envAudio', target: 'video.tunnel3d', amount: 0.55, bipolar: false },
+          { id: `r3-${Date.now() + 2}`, source: 'lfo1', target: 'video.meshDisplacement', amount: 0.45, bipolar: true }
+        ];
+        break;
+      }
     }
 
-    const audioSlotKeys: AudioParamKey[] = ['reverbWet', 'filterCutoff', 'tapeTone', 'drive', 'wowDepth', 'flutterDepth'];
-    const randomAudioTarget = audioSlotKeys[Math.floor(Math.random() * audioSlotKeys.length)];
+    const randomTargets: Record<LfoTargetId, boolean> = {
+      filterCutoff: styleIdx === 2 || styleIdx === 6,
+      tapeSpeed: styleIdx === 5,
+      drive: styleIdx === 4,
+      reverbWet: styleIdx === 1 || styleIdx === 3,
+      glitchIntensity: styleIdx === 4,
+      rgbShift: styleIdx === 1 || styleIdx === 4,
+      scanlines: styleIdx === 3,
+      meshDisplacement: styleIdx === 0 || styleIdx === 7,
+      luminance: styleIdx === 6,
+      colorBleed: styleIdx === 6
+    };
 
-    const videoSlotKeys: VideoParamKey[] = ['datamosh', 'feedback', 'chromaSmear', 'vaporwaveTint', 'crtCurvature'];
-    const randomVideoTarget = videoSlotKeys[Math.floor(Math.random() * videoSlotKeys.length)];
+    const rate1 = Number(rnd(0.25, 2.2).toFixed(2));
+    const rate2 = Number(rnd(0.4, 3.2).toFixed(2));
 
-    // Also generate 2 visual ring routings
-    setModRoutings([
-      {
-        id: `rnd-lfo1-${Date.now()}`,
-        source: 'lfo1',
-        target: 'video.rgbShift',
-        amount: Number(rnd(0.25, 0.45).toFixed(2)),
-        bipolar: true
-      },
-      {
-        id: `rnd-env-${Date.now() + 1}`,
-        source: 'envAudio',
-        target: Math.random() > 0.4 ? 'video.datamosh' : 'video.luminance',
-        amount: Number(rnd(0.25, 0.50).toFixed(2)),
-        bipolar: false
-      }
-    ]);
-
-    setLfoConfig({
+    setModRoutings(routings);
+    setLfoConfig((prev) => ({
+      ...prev,
       enabled: true,
-      shape: randomShape,
-      rate: Number(rnd(0.20, 1.10).toFixed(2)),
-      depth: Number(rnd(0.30, 0.58).toFixed(2)),
-      phaseSpread: Number(rnd(0.20, 0.60).toFixed(2)),
+      shape: lfo1Shape,
+      rate: rate1,
+      depth: Number(rnd(0.35, 0.72).toFixed(2)),
+      phaseSpread: Number(rnd(0.15, 0.75).toFixed(2)),
       targets: randomTargets,
-      customAudioTarget: randomAudioTarget,
-      customAudioEnabled: Math.random() > 0.5,
-      customVideoTarget: randomVideoTarget,
-      customVideoEnabled: Math.random() > 0.4
-    });
+      lfo1: {
+        id: 'lfo1',
+        enabled: true,
+        shape: lfo1Shape,
+        rate: rate1,
+        syncDivision: pick(['free', '1/4', '1/2']),
+        smooth: Number(rnd(0.0, 0.35).toFixed(2)),
+        points: SHAPE_POINTS[lfo1Shape] || SHAPE_POINTS.sine
+      },
+      lfo2: {
+        id: 'lfo2',
+        enabled: true,
+        shape: lfo2Shape,
+        rate: rate2,
+        syncDivision: pick(['free', '1/2', '1/8']),
+        smooth: Number(rnd(0.0, 0.35).toFixed(2)),
+        points: SHAPE_POINTS[lfo2Shape] || SHAPE_POINTS.triangle
+      }
+    }));
 
-    setVideoParams(randomVideo);
-    setAudioParams(randomAudio);
+    setVideoParams(baseVideo);
+    setAudioParams(baseAudio);
+    showToast(`🎲 RANDOM : ${styleName}`, styleSub);
   };
 
   actionHandlersRef.current = {
