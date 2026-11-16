@@ -311,8 +311,18 @@ export class MidiEngine {
   private customBankKnobMaps: Array<Record<number, MidiTarget>> = [{}, {}, {}];
   private activeProfileId: string = 'auto';
   private activeBank: number = 0; // 0 = Bank 1, 1 = Bank 2, 2 = Bank 3
-  private lastActiveChannel: number = 0;
-  private sysexEnabled: boolean = false;
+  private lastActiveChannel: number = 8; // Novation Launch Control Factory Template 1 defaults to Ch 9 (index 8)
+  private lastPadMode: 'factory' | 'user' | 'cc' = 'factory';
+  private lastInputSignature: string = '__uninitialized__';
+  private boundInputIds: Set<string> = new Set();
+  private lastSentLedBytes: Map<string, number> = new Map();
+  private ledSyncTimer: any = null;
+  private txQueue: Array<{ output: any; bytes: [number, number, number] }> = [];
+  private txDrainTimer: any = null;
+  private stateChangeDebounceTimer: any = null;
+  private outputReadyTimestamp: number = 0;
+  private lastLedSendTimestamp: number = 0;
+  private isConnecting: boolean = false;
   private lastLedState: MidiLedState = {
     isPlaying: false,
     isTapeFreeze: false,
@@ -346,9 +356,9 @@ export class MidiEngine {
     // On external HTTPS domains (Render), Chromium/Opera may require a user gesture to grant Web MIDI access
     if (typeof window !== 'undefined') {
       const retryOnGesture = () => {
-        if (!this.isConnected) {
+        if (!this.isConnected && !this.midiAccess) {
           this.connect();
-        } else {
+        } else if (this.isConnected) {
           window.removeEventListener('pointerdown', retryOnGesture);
           window.removeEventListener('keydown', retryOnGesture);
         }
@@ -365,26 +375,30 @@ export class MidiEngine {
       return false;
     }
 
+    if (this.isConnecting) return this.isConnected;
+    this.isConnecting = true;
+
     try {
       this.lastError = null;
-      let access: any = null;
-      // Request sysex:true first so Novation Launch Control LEDs can be driven via both standard MIDI & SysEx
-      try {
-        access = await (navigator as any).requestMIDIAccess({ sysex: true });
-        this.sysexEnabled = true;
-      } catch {
-        access = await (navigator as any).requestMIDIAccess({ sysex: false });
-        this.sysexEnabled = false;
+      // Always use sysex:false so Chromium/Electron/WinMM never hangs on SysEx permissions or driver buffers
+      if (!this.midiAccess) {
+        this.midiAccess = await (navigator as any).requestMIDIAccess({ sysex: false });
+        this.midiAccess.onstatechange = (e: any) => {
+          // Ignore output port events or connection="open"/"closed" events triggered by attaching onmidimessage!
+          if (e?.port && e.port.type === 'output') return;
+          if (this.stateChangeDebounceTimer) clearTimeout(this.stateChangeDebounceTimer);
+          this.stateChangeDebounceTimer = setTimeout(() => {
+            this.stateChangeDebounceTimer = null;
+            const sig = this.computeInputSignature();
+            if (sig !== this.lastInputSignature) {
+              this.setupInputs();
+            }
+          }, 260);
+        };
       }
-      this.midiAccess = access;
-      this.setupInputs();
-      access.onstatechange = () => {
-        this.setupInputs();
-      };
+      this.setupInputs(true);
       if (!this.isConnected) {
         this.lastError = 'Aucun port MIDI détecté. Sur Windows, fermez tout autre navigateur/onglet local (localhost) ou logiciel utilisant déjà le Launch Control.';
-      } else {
-        this.syncHardwareLeds();
       }
       return this.isConnected;
     } catch (err: any) {
@@ -392,23 +406,45 @@ export class MidiEngine {
       console.warn('[Web MIDI] Access denied or unsupported:', err);
       this.stateChangeListeners.forEach((cb) => cb(false, this.deviceName));
       return false;
+    } finally {
+      this.isConnecting = false;
     }
+  }
+
+  private computeInputSignature(): string {
+    if (!this.midiAccess || !this.midiAccess.inputs) return '';
+    const ids: string[] = [];
+    for (const input of this.midiAccess.inputs.values()) {
+      if (!input.state || input.state === 'connected') {
+        ids.push(`${input.id}:${input.name || ''}`);
+      }
+    }
+    return ids.sort().join('|');
   }
 
   public getLastError(): string | null {
     return this.lastError;
   }
 
-  public onActivity(cb: (event: MidiActivityEvent) => void) {
+  public onActivity(cb: (event: MidiActivityEvent) => void): () => void {
     this.activityListeners.push(cb);
+    return () => {
+      this.activityListeners = this.activityListeners.filter((x) => x !== cb);
+    };
   }
 
-  public onStateChange(cb: (connected: boolean, deviceName: string) => void) {
+  public onStateChange(cb: (connected: boolean, deviceName: string) => void): () => void {
     this.stateChangeListeners.push(cb);
+    return () => {
+      this.stateChangeListeners = this.stateChangeListeners.filter((x) => x !== cb);
+    };
   }
 
-  public onBankChange(cb: (bankIndex: number, bank: LaunchControlBank) => void) {
+  public onBankChange(cb: (bankIndex: number, bank: LaunchControlBank) => void): () => void {
     this.bankChangeListeners.push(cb);
+    return () => {
+      this.bankChangeListeners = this.bankChangeListeners.filter((x) => x !== cb);
+    };
   }
 
   public getActiveBank(): number {
@@ -563,84 +599,125 @@ export class MidiEngine {
   }
 
   /**
-   * Drives the physical LEDs on the Novation Launch Control (8 Pads + 4 Arrow Buttons)
+   * Drives the physical LEDs on the Novation Launch Control (8 Pads + 4 Arrow Buttons).
+   * Throttled, diff-cached & paced (1 msg / 8ms) so it never deadlocks Windows WinMM / USB MIDI.
    */
-  public syncHardwareLeds(nextState?: Partial<MidiLedState>) {
+  public syncHardwareLeds(nextState?: Partial<MidiLedState>, forceRefresh = false) {
     if (nextState) {
       this.lastLedState = { ...this.lastLedState, ...nextState, activeBank: this.activeBank };
     }
-    if (!this.midiAccess || !this.midiAccess.outputs) return;
+    if (!this.isConnected || !this.midiAccess || !this.midiAccess.outputs) return;
+
+    if (forceRefresh) {
+      this.lastSentLedBytes.clear();
+    }
+
+    const now = performance.now();
+    const waitMs = Math.max(45, Math.ceil(this.outputReadyTimestamp - now));
+
+    if (this.ledSyncTimer) clearTimeout(this.ledSyncTimer);
+    this.ledSyncTimer = setTimeout(() => {
+      this.ledSyncTimer = null;
+      this.flushHardwareLeds();
+    }, waitMs);
+  }
+
+  private enqueueMidiTx(output: any, bytes: [number, number, number]) {
+    // Deduplicate any pending message for the same status+data1 in the queue
+    const idx = this.txQueue.findIndex(
+      (item) => item.output === output && item.bytes[0] === bytes[0] && item.bytes[1] === bytes[1]
+    );
+    if (idx !== -1) {
+      this.txQueue[idx].bytes[2] = bytes[2];
+    } else {
+      this.txQueue.push({ output, bytes });
+    }
+
+    if (!this.txDrainTimer) {
+      this.txDrainTimer = setInterval(() => {
+        if (this.txQueue.length === 0) {
+          clearInterval(this.txDrainTimer);
+          this.txDrainTimer = null;
+          return;
+        }
+        const next = this.txQueue.shift();
+        if (next) {
+          try {
+            this.lastLedSendTimestamp = performance.now();
+            next.output.send(next.bytes);
+          } catch {}
+        }
+      }, 8);
+    }
+  }
+
+  private flushHardwareLeds() {
+    if (!this.isConnected || !this.midiAccess || !this.midiAccess.outputs) return;
+    if (performance.now() < this.outputReadyTimestamp) return;
 
     const state = this.lastLedState;
     const noteMap = this.getMergedNoteMap();
     const ccMap = this.getMergedCcMap();
 
     const factoryNotes = [9, 10, 11, 12, 25, 26, 27, 28];
-    const factoryNotesT2 = [13, 14, 15, 16, 29, 30, 31, 32];
     const userNotes = [36, 37, 38, 39, 40, 41, 42, 43];
     const padCcs = [73, 74, 75, 76, 77, 78, 79, 80];
 
-    // Channels to broadcast LED states on: last active channel from hardware + Ch 1 (0) + Ch 9 (8, Factory Template 1 default)
-    const channels = Array.from(new Set([this.lastActiveChannel, 0, 8]));
+    const ch = this.lastActiveChannel & 0x0f;
 
     // Arrow LEDs indicate active Knob Bank:
     // Bank 1 (0): Up ▲ = ON, Down ▼ = OFF
     // Bank 2 (1): Up ▲ = ON, Down ▼ = ON
     // Bank 3 (2): Up ▲ = OFF, Down ▼ = ON
-    const upArrowColor = state.activeBank === 0 || state.activeBank === 1 ? LC_COLOR.RED_FULL : 0;
-    const downArrowColor = state.activeBank === 1 || state.activeBank === 2 ? LC_COLOR.RED_FULL : 0;
+    const upArrowColor = state.activeBank === 0 || state.activeBank === 1 ? LC_COLOR.RED_FULL : LC_COLOR.OFF;
+    const downArrowColor = state.activeBank === 1 || state.activeBank === 2 ? LC_COLOR.RED_FULL : LC_COLOR.OFF;
     const leftArrowColor = LC_COLOR.RED_DIM;
     const rightArrowColor = LC_COLOR.RED_DIM;
 
     for (const output of this.midiAccess.outputs.values()) {
-      try {
-        if (typeof output.open === 'function') {
-          output.open().catch?.(() => {});
-        }
-
-        // 1. Update 8 Pads across Note & CC modes
-        for (let padIdx = 0; padIdx < 8; padIdx++) {
-          const fn1 = factoryNotes[padIdx];
-          const fn2 = factoryNotesT2[padIdx];
-          const un = userNotes[padIdx];
-          const pcc = padCcs[padIdx];
-
-          const target = noteMap[fn1] || noteMap[un] || ccMap[pcc];
-          const color = this.getTargetLedColor(target, state, padIdx);
-
-          for (const ch of channels) {
-            output.send([0x90 | ch, fn1, color]);
-            output.send([0x90 | ch, fn2, color]);
-            output.send([0x90 | ch, un, color]);
-            output.send([0xb0 | ch, pcc, color]);
-          }
-
-          // Official Novation Launch Control SysEx LED command (F0 00 20 29 02 0A 78 <Template> <LED> <Color> F7)
-          if (this.sysexEnabled) {
-            for (const tmpl of [this.lastActiveChannel, 0, 8]) {
-              output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, padIdx, color, 0xf7]);
-            }
-          }
-        }
-
-        // 2. Update 4 Directional Arrow Button LEDs (CC 114=Up, 115=Down, 116=Left, 117=Right)
-        for (const ch of channels) {
-          output.send([0xb0 | ch, 114, upArrowColor]);
-          output.send([0xb0 | ch, 115, downArrowColor]);
-          output.send([0xb0 | ch, 116, leftArrowColor]);
-          output.send([0xb0 | ch, 117, rightArrowColor]);
-        }
-        if (this.sysexEnabled) {
-          for (const tmpl of [this.lastActiveChannel, 0, 8]) {
-            output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, 8, upArrowColor, 0xf7]);
-            output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, 9, downArrowColor, 0xf7]);
-            output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, 10, leftArrowColor, 0xf7]);
-            output.send([0xf0, 0x00, 0x20, 0x29, 0x02, 0x0a, 0x78, tmpl & 0x0f, 11, rightArrowColor, 0xf7]);
-          }
-        }
-      } catch {
-        // Ignore individual port send errors
+      const outName = (output.name || '').toLowerCase();
+      // NEVER send LED MIDI messages to Microsoft GS Wavetable Synth or virtual loopback ports!
+      if (
+        !outName.includes('launch control') ||
+        outName.includes('wavetable') ||
+        outName.includes('synth') ||
+        outName.includes('through') ||
+        outName.includes('mapper')
+      ) {
+        continue;
       }
+      if (output.state && output.state !== 'connected') continue;
+
+      const sendIfChanged = (status: number, data1: number, color: number) => {
+        const key = `${output.id}:${status}:${data1}`;
+        if (this.lastSentLedBytes.get(key) === color) return;
+        this.lastSentLedBytes.set(key, color);
+        this.enqueueMidiTx(output, [status, data1, color]);
+      };
+
+      // 1. Update 8 Pads on the active channel and active pad mode
+      for (let padIdx = 0; padIdx < 8; padIdx++) {
+        const fn1 = factoryNotes[padIdx];
+        const un = userNotes[padIdx];
+        const pcc = padCcs[padIdx];
+
+        const target = noteMap[fn1] || noteMap[un] || ccMap[pcc];
+        const color = this.getTargetLedColor(target, state, padIdx);
+
+        if (this.lastPadMode === 'cc') {
+          sendIfChanged(0xb0 | ch, pcc, color);
+        } else if (this.lastPadMode === 'user') {
+          sendIfChanged(0x90 | ch, un, color);
+        } else {
+          sendIfChanged(0x90 | ch, fn1, color);
+        }
+      }
+
+      // 2. Update 4 Directional Arrow Button LEDs (CC 114=Up, 115=Down, 116=Left, 117=Right)
+      sendIfChanged(0xb0 | ch, 114, upArrowColor);
+      sendIfChanged(0xb0 | ch, 115, downArrowColor);
+      sendIfChanged(0xb0 | ch, 116, leftArrowColor);
+      sendIfChanged(0xb0 | ch, 117, rightArrowColor);
     }
   }
 
@@ -654,42 +731,81 @@ export class MidiEngine {
     }, 320);
   }
 
-  private setupInputs() {
+  private setupInputs(force = false) {
     if (!this.midiAccess) return;
+
+    const sig = this.computeInputSignature();
+    if (!force && sig === this.lastInputSignature) {
+      return;
+    }
+    this.lastInputSignature = sig;
 
     let found = false;
     let preferredName = '';
+    const currentIds = new Set<string>();
 
     for (const input of this.midiAccess.inputs.values()) {
+      if (input.state && input.state !== 'connected') continue;
+      const inName = (input.name || '').toLowerCase();
+      if (inName.includes('wavetable') || inName.includes('through') || inName.includes('mapper')) {
+        continue;
+      }
+
       found = true;
+      currentIds.add(input.id);
       const name: string = input.name || 'MIDI Controller';
-      if (!preferredName || name.toLowerCase().includes('launch control')) {
+      if (!preferredName || inName.includes('launch control')) {
         preferredName = name;
       }
 
-      if (typeof input.open === 'function') {
-        try {
-          input.open();
-        } catch {}
+      if (!this.boundInputIds.has(input.id)) {
+        this.boundInputIds.add(input.id);
+        console.log(`%c[Web MIDI] Connected device: ${name} (${input.manufacturer || 'Generic'})`, 'color: #ff9d00; font-weight: bold;');
+        input.onmidimessage = (msg: any) => this.handleMidiMessage(msg, name);
       }
-
-      console.log(`%c[Web MIDI] Connected device: ${name} (${input.manufacturer || 'Generic'})`, 'color: #ff9d00; font-weight: bold;');
-
-      input.onmidimessage = (msg: any) => this.handleMidiMessage(msg, name);
     }
 
+    // Clean up disconnected input IDs
+    for (const oldId of Array.from(this.boundInputIds)) {
+      if (!currentIds.has(oldId)) {
+        this.boundInputIds.delete(oldId);
+      }
+    }
+
+    const prevConnected = this.isConnected;
+    const prevName = this.deviceName;
     this.isConnected = found;
     this.deviceName = found ? (preferredName || 'MIDI Controller') : 'No Device';
 
-    this.stateChangeListeners.forEach(cb => cb(this.isConnected, this.deviceName));
+    if (force || prevConnected !== this.isConnected || prevName !== this.deviceName) {
+      this.stateChangeListeners.forEach(cb => cb(this.isConnected, this.deviceName));
+    }
+
     if (found) {
-      setTimeout(() => this.syncHardwareLeds(), 60);
+      // Wait 850ms after input setup before opening/sending to MIDIOutput so Windows WinMM never deadlocks
+      this.outputReadyTimestamp = performance.now() + 850;
+      this.syncHardwareLeds(undefined, true);
+    } else {
+      this.txQueue = [];
+      this.lastSentLedBytes.clear();
     }
   }
 
   private handleMidiMessage(msg: any, deviceName: string) {
     if (!msg.data || msg.data.length < 2) return;
     const [status, data1, data2 = 0] = msg.data;
+    // Ignore System Real-Time / Clock / Active Sensing / SysEx messages (0xF0..0xFF)
+    if (status >= 0xf0) return;
+
+    // Guard against hardware/driver loopback echoing our own LED output bytes back into input
+    if (performance.now() - this.lastLedSendTimestamp < 25) {
+      for (const [key, sentColor] of this.lastSentLedBytes.entries()) {
+        if (sentColor === data2 && key.endsWith(`:${status}:${data1}`)) {
+          return;
+        }
+      }
+    }
+
     const command = status & 0xf0;
     const channel = status & 0x0f;
 
@@ -699,17 +815,36 @@ export class MidiEngine {
 
     if (!isCC && !isNoteOn && !isNoteOff) return;
 
-    this.lastActiveChannel = channel;
-
     const paramNumber = data1;
     const value = data2;
     const normalized = value / 127;
 
+    // Detect active channel and pad mode from hardware
+    let modeChanged = false;
+    if (this.lastActiveChannel !== channel) {
+      this.lastActiveChannel = channel;
+      modeChanged = true;
+    }
+    if (isNoteOn || isNoteOff) {
+      const nextMode = paramNumber >= 36 && paramNumber <= 43 ? 'user' : 'factory';
+      if (this.lastPadMode !== nextMode) {
+        this.lastPadMode = nextMode;
+        modeChanged = true;
+      }
+    } else if (isCC && paramNumber >= 73 && paramNumber <= 80) {
+      if (this.lastPadMode !== 'cc') {
+        this.lastPadMode = 'cc';
+        modeChanged = true;
+      }
+    }
+    if (modeChanged) {
+      this.syncHardwareLeds(undefined, true);
+    }
+
     // If a momentary pad or arrow button is released on the Launch Control, its internal firmware turns off the LED.
-    // Re-sync our stateful LEDs right after release so active toggles (REC, PLAY, FREEZE, LFO, PRESET, BANK) stay lit!
+    // Force-refresh our stateful LEDs right after release so active toggles (REC, PLAY, FREEZE, LFO, PRESET, BANK) stay lit!
     if (isNoteOff || (isCC && value === 0 && paramNumber >= 73)) {
-      setTimeout(() => this.syncHardwareLeds(), 15);
-      setTimeout(() => this.syncHardwareLeds(), 70);
+      this.syncHardwareLeds(undefined, true);
       return;
     }
 
@@ -765,7 +900,7 @@ export class MidiEngine {
 
     // Re-sync LEDs shortly after trigger so toggled states reflect immediately on the pads
     if (isTrigger && target?.startsWith('action.')) {
-      setTimeout(() => this.syncHardwareLeds(), 25);
+      this.syncHardwareLeds(undefined, true);
     }
 
     // 4. Notify UI activity listeners (LED indicators)

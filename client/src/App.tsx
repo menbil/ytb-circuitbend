@@ -383,7 +383,6 @@ export const App: React.FC = () => {
     }
 
     let animId: number;
-    lastModFrameTimeRef.current = performance.now() / 1000;
 
     const evalUnitWave = (
       phase: number,
@@ -600,22 +599,31 @@ export const App: React.FC = () => {
   useEffect(() => {
     const engine = new MidiEngine();
     midiEngineRef.current = engine;
+    let lastCcToastTime = 0;
 
-    engine.onStateChange((connected, name) => {
+    const unsubState = engine.onStateChange((connected, name) => {
       setMidiConnected(connected);
       setMidiDeviceName(name);
     });
 
-    engine.onBankChange((_bankIdx, bank) => {
+    const unsubBank = engine.onBankChange((_bankIdx, bank) => {
       showToast(`🎛️ LAUNCH CONTROL : ${bank.name}`, bank.description);
     });
 
-    engine.onActivity((ev) => {
+    const unsubActivity = engine.onActivity((ev) => {
       if (ev.type === 'noteOn' || (ev.type === 'cc' && ev.value > 0)) {
         // Skip duplicate toast when pressing bank arrows (already handled by onBankChange)
         if (ev.targetMapped === 'action.bankPrev' || ev.targetMapped === 'action.bankNext') {
           return;
         }
+        // Throttle continuous knob CC toasts so React state is not spammed at 120Hz
+        const isAction = ev.targetMapped?.startsWith('action.') || ev.type === 'noteOn';
+        const now = performance.now();
+        if (!isAction && now - lastCcToastTime < 140) {
+          return;
+        }
+        lastCcToastTime = now;
+
         const actionLabel = ev.targetMapped 
           ? ev.targetMapped.replace('action.', '').replace('video.', 'Vidéo: ').replace('audio.', 'Audio: ') 
           : null;
@@ -732,6 +740,12 @@ export const App: React.FC = () => {
         else if (target === 'action.prevTrack' && h.prevTrack) h.prevTrack();
       }
     });
+
+    return () => {
+      unsubState();
+      unsubBank();
+      unsubActivity();
+    };
   }, [showToast]);
 
   // Real-time Hardware LED Sync to Novation Launch Control Pads & Arrow Buttons

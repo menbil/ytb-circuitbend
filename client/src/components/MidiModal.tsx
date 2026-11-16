@@ -23,7 +23,7 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
   const [midiError, setMidiError] = useState<string | null>(midiEngine ? midiEngine.getLastError() : null);
 
   useEffect(() => {
-    if (!midiEngine) return;
+    if (!midiEngine || !isOpen) return;
 
     const refreshBindings = (bankOverride?: number) => {
       const b = bankOverride !== undefined ? bankOverride : midiEngine.getActiveBank();
@@ -35,23 +35,33 @@ export const MidiModal: React.FC<MidiModalProps> = ({ isOpen, onClose, midiEngin
     };
     refreshBindings();
 
-    midiEngine.onStateChange((connected, name) => {
+    const unsubState = midiEngine.onStateChange((connected, name) => {
       setIsConnected(connected);
       setDeviceName(name);
       setMidiError(midiEngine.getLastError());
     });
 
-    midiEngine.onBankChange((bankIdx) => {
+    const unsubBank = midiEngine.onBankChange((bankIdx) => {
       refreshBindings(bankIdx);
     });
 
-    midiEngine.onActivity((event) => {
+    const unsubActivity = midiEngine.onActivity((event) => {
       setLastActivity(event);
-      refreshBindings();
       if (midiEngine.getLearnTarget() === null) {
-        setLearningTarget(null);
+        setLearningTarget((prev) => {
+          if (prev !== null) {
+            refreshBindings();
+          }
+          return null;
+        });
       }
     });
+
+    return () => {
+      unsubState();
+      unsubBank();
+      unsubActivity();
+    };
   }, [midiEngine, isOpen]);
 
   if (!isOpen) return null;
